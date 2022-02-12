@@ -44,6 +44,39 @@ function add_field(proto_field_constructor, name, desc, ...)
     end
 end
 
+-- add Types
+hasSequence_types = {
+    [0] = "No",
+    [3] = "Yes"
+}
+hasMs_types = {
+    [0] = "No",
+    [1] = "Yes"
+}
+
+packetCommand_types = {
+    -- [1] = "VideoFrame",
+    [2] = "OpenChannel",
+    [3] = "Data",
+    [4] = "VideoData"
+}
+
+ssrc_types = {
+    [0] = "Core",
+    [1024] = "Control",
+    [1025] = "Qos",
+    [1026] = "Video",
+    [1027] = "Audio",
+    [1028] = "Messaging",
+    [1029] = "ChatAudio",
+    [1030] = "Input",
+    [1031] = "InputFeedback"
+}
+
+fData_types = {
+    [4] = "Frame"
+}
+
 -- add fields
 add_field(ProtoField.bytes, "payload_rtp_aad", "Additional Authentication Data (AAD)")
 add_field(ProtoField.bytes, "payload_rtp_tag", "Auth Tag")
@@ -52,9 +85,33 @@ add_field(ProtoField.bytes, "payload_encrypted", "Encrypted payload")
 add_field(ProtoField.bytes, "payload_decrypted", "Decrypted payload")
 
 add_field(ProtoField.uint16, "rtp_sequence", "Sequence")
-add_field(ProtoField.uint32, "rtp_ssrc", "SSRC")
+add_field(ProtoField.uint32, "rtp_ssrc", "SSRC", base.DEC, ssrc_types)
 
-add_field(ProtoField.bytes, "gs_opcode", "OpCode")
+add_field(ProtoField.uint16, "gs_opcode", "Bitflags", base.DEC, {}, 0xffff)
+add_field(ProtoField.uint16, "gs_has_sequence", "hasSequence", base.DEC, hasSequence_types, 0xC0)
+add_field(ProtoField.uint16, "gs_has_ms", "hasMs", base.DEC, hasMs_types, 0x4000)
+add_field(ProtoField.uint16, "gs_sequence", "Sequence")
+add_field(ProtoField.uint32, "gs_ms", "Ms since start")
+add_field(ProtoField.uint16, "gs_command", "Packet command", base.DEC, packetCommand_types)
+add_field(ProtoField.uint16, "gs_packet_index", "Fragment index")
+add_field(ProtoField.uint16, "gs_packet_data_packets", "Fragment data packets")
+
+add_field(ProtoField.uint32, "gs_packet_total_count", "Fragments count")
+add_field(ProtoField.uint32, "gs_packet_total_length", "Fragment total length")
+add_field(ProtoField.uint32, "gs_packet_offset", "Fragment offset")
+add_field(ProtoField.string, "gs_packet_data", "Fragment data")
+add_field(ProtoField.uint16, "gs_packet_fragment_num", "Fragment num")
+
+add_field(ProtoField.string, "gs_packet_kv_key", "KV Key")
+add_field(ProtoField.bytes, "gs_packet_kv_value", "KV Value")
+
+add_field(ProtoField.uint32, "gs_video_fdata", "Video fData", base.DEC, fData_types)
+add_field(ProtoField.bytes, "gs_video_frameid", "Video Frame ID")
+add_field(ProtoField.uint64, "gs_video_timestamp", "Video Timestamp")
+
+add_field(ProtoField.string, "gs_openchannel_name", "Channel Name")
+add_field(ProtoField.uint32, "gs_temp_length", "DEBUG")
+add_field(ProtoField.uint32, "gs_temp_data", "DEBUG DATA")
 
 xcloud_proto.fields = hf
 
@@ -147,21 +204,155 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         -- Process decrypted tree
         local decryped_tree = subtree:add(hf.payload_decrypted, decr_tvb())
-        decryped_tree:add(hf.gs_opcode, decr_tvb(0, 2))
+        dissect_data_packet(decryped_tree, decr_tvb)
     else
         local subtree = tree:add("non xCloud Gamestreaming packet: " .. string.tohex(is_rtp:raw()), tvbuf(12):tvb())
     end
+end
 
-    -- decrypt(tvb, tvb())
+function dissect_data_packet(tree, buffer)
+    local flags = tree:add("Flags", buffer(0, 2))
+    flags:add(hf.gs_opcode, buffer(0, 2))
+    flags:add(hf.gs_has_sequence, buffer(0, 2))
+    flags:add(hf.gs_has_ms, buffer(0, 2))
 
-    -- if ip_proto_f().value == 6 then
-    --     -- TCP
-    --     payload_count = process_nano_tcp(tvbuf, pinfo, subtree)
-    -- else
-    --     -- UDP
-    --     parse_nano_packet(tvbuf, pinfo, subtree)
-    --     payload_count = 1
+    local offset = 2
+    local bit1 = string.tohex(buffer(0, 1):raw())
+    local bit2 = string.tohex(buffer(1, 1):raw())
+
+    local has_seq = {"C0", "C1"}
+    for index, hex_match in pairs(has_seq) do
+        if hex_match == bit2 then
+
+            tree:add_le(hf.gs_sequence, buffer(offset, 2))
+            offset = offset + 2
+            break
+        end
+    end
+
+    local has_ms = {"55", "45"}
+    for index, hex_match in pairs(has_ms) do
+        if hex_match == bit1 then
+
+            tree:add_le(hf.gs_ms, buffer(offset, 4))
+            offset = offset + 4
+            break
+        end
+    end
+
+    -- Switch back to main tree
+
+    -- Text fragment?
+    -- if (bit1 == "04" or bit1 == "05" or bit1 == "45" or bit1 == "55") and (bit2 == "C0" or bit2 == "C1") then
+        
+        if bit2 == "C1" then
+            tree:add_le(hf.gs_ms, buffer(offset, 4))
+            offset = offset + 3
+        end
+
+        if bit1 == "04" then
+            offset = offset + 8
+        end
+        if bit1 == "05" then
+            tree:add_le(hf.gs_ms, buffer(offset, 4))
+            offset = offset + 4
+            offset = offset + 4
+        end
+        if bit1 == "45" or bit1 == "55" then
+            offset = offset + 4
+        end
+        if bit1 == "55" then
+            offset = offset + 2
+        end
+
+        tree:add_le(hf.gs_command, buffer(offset, 2))
+        offset = offset + 2
+        if buffer(offset-2, 2):le_uint() == 3 then
+            tree:add_le(hf.gs_packet_index, buffer(offset, 2))
+            offset = offset + 2 + 4
+
+            tree:add_le(hf.gs_packet_data_packets, buffer(offset, 2))
+            if buffer(offset, 2):le_uint() > 0 then
+
+                offset = offset + 4
+                tree:add_le(hf.gs_packet_total_length, buffer(offset, 4))
+                offset = offset + 4
+                tree:add_le(hf.gs_packet_total_count, buffer(offset, 4))
+                offset = offset + 4
+
+                if buffer(offset-4, 4):le_uint() > 1 then
+                    tree:add_le(hf.gs_packet_offset, buffer(offset, 4))
+                    offset = offset + 4
+                    local data_length = buffer(offset, 4):le_uint()
+                    -- print("data_length: " .. data_length)
+                    tree:add_le(hf.gs_packet_data, buffer(offset+4, data_length))
+                    offset = offset + 4 + data_length
+                    tree:add_le(hf.gs_packet_fragment_num, buffer(offset, 2))
+                else
+                    offset = offset + 4 + 4
+                    local key_length = buffer(offset, 4):le_uint()
+                    offset = offset + 4
+                    local value_length = buffer(offset, 4):le_uint()
+                    offset = offset + 4 + 4
+                    local payload_length = buffer(offset, 4):le_uint()
+                    offset = offset + 4
+
+                    tree:add_le(hf.gs_packet_kv_key, buffer(offset, key_length))
+                    offset = offset + key_length
+                    tree:add_le(hf.gs_packet_kv_value, buffer(offset, value_length))
+                    offset = offset + value_length
+                end
+            end
+
+        end
+
+        if buffer(offset-2, 2):le_uint() == 2 then
+            offset = offset + 2
+            local channel_name_length = buffer(offset, 2):le_uint()
+            tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
+            offset = offset + channel_name_length + 2
+        end
+
+        if buffer(offset-2, 2):le_uint() == 4 then
+            offset = offset + 2
+            tree:add_le(hf.gs_packet_index, buffer(offset, 2))
+            offset = offset + 4
+
+            tree:add_le(hf.gs_packet_total_length, buffer(offset, 4))
+            offset = offset + 4
+
+            tree:add_le(hf.gs_video_fdata, buffer(offset, 4))
+            offset = offset + 4
+
+            tree:add_le(hf.gs_video_frameid, buffer(offset, 4))
+            offset = offset + 4
+
+            tree:add_le(hf.gs_video_timestamp, buffer(offset, 8))
+            offset = offset + 8
+
+            
+
+            
+        end
+        
     -- end
+
+    -- Open Channel
+    -- if bit1 == "45" and bit2 == "C0" then
+    --     offset = offset + 5
+    --     tree:add_le(hf.gs_command, buffer(offset, 2))
+    --     offset = offset + 4
+
+    --     if buffer(offset, 4):le_uint() == 2 then
+    --         local channel_name_length = buffer(offset, 2):le_uint()
+    --         tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
+    --         offset = offset + channel_name_length + 2
+    --     end
+    -- end
+
+    -- flags:add_le(hf.gs_sequence, buffer(2, 2))
+    -- flags:add_le(hf.gs_ms, buffer(4, 3))
+
 end
 
 function xcloud_proto.init()
