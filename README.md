@@ -4,8 +4,8 @@ This repo contains a wireshark dissector to view xCloud RTP traffic.
 
 ## Requirements:
 
-- LUA 5.2 (Other versions dont work)
-- luegcrypt (https://github.com/Lekensteyn/luagcrypt)
+- Lua 5.2 (Other versions dont work)
+- luagcrypt (https://github.com/Lekensteyn/luagcrypt)
 - NodeJS (For generating the keys only)
 
 ## Setup
