@@ -1,7 +1,7 @@
 -- ################################################
 -- #   xCloud Gamestreaming protocol dissector    #
 -- #          by UnknownSKL (2022)                #
--- #          credits to tuxuser                  #
+-- #   credits to tuxuser for the base template   #
 -- ################################################
 
 -- declare protocol
