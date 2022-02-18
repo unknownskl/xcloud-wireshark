@@ -320,21 +320,29 @@ function dissect_data_packet(tree, buffer)
 
         local offset_before = offset
 
-        if unknown_bitflag == 0 then -- 0000 0000
+        if unknown_bitflag == 0 and bit1 == "45" then -- 0000 0000
             offset = offset + 1
         end
         if unknown_bitflag == 1  then
             offset = offset + 1
             
-            if  bit1 ~= "05" then
+            if  bit1 == "45" then
                 offset = offset + 1
             end
         end
         if unknown_bitflag == 2 then -- 0000 0010
             offset = offset + 2
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
         if unknown_bitflag == 3 then -- 0000 0011
             offset = offset + 3
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
         if unknown_bitflag == 4 then
             offset = offset + 4
@@ -346,10 +354,24 @@ function dissect_data_packet(tree, buffer)
             offset = offset + 3
         end
         if unknown_bitflag == 17 then
-            offset = offset + 2
+            offset = offset + 1
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
         if unknown_bitflag == 33 then
             offset = offset + 2
+            
+            if bit1 == "45" then
+                offset = offset + 1
+            end
+        end
+        if unknown_bitflag == 34 then -- 0010 0010
+            offset = offset + 0
+            
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
         if unknown_bitflag == 35 then
             offset = offset + 4
@@ -365,13 +387,66 @@ function dissect_data_packet(tree, buffer)
         end
         if unknown_bitflag == 49 then
             offset = offset + 1
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
         if unknown_bitflag == 65 then
             offset = offset + 1
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
         end
-        if unknown_bitflag == 17 then -- 0001 0001 -- found on 05c0
+        if unknown_bitflag == 66 then -- 0100 0010
+            offset = offset + 3
+        end
+        if unknown_bitflag == 67 then -- 0100 0011
+            offset = offset + 3
+        end
+        if unknown_bitflag == 68 then -- 0100 0100
+            offset = offset + 4
+        end
+        if unknown_bitflag == 33 then -- 0010 0001 -- found on 05c0
             offset = offset -1
         end
+        if unknown_bitflag == 34 then -- 0010 0010
+            offset = offset + 2
+        end
+        if unknown_bitflag == 83 then -- 0101 0011
+            offset = offset + 3
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
+        end
+        if unknown_bitflag == 81 then -- 0101 0001 -- found on 05c0
+            offset = offset - 1
+        end
+        if unknown_bitflag == 84 then -- 0101 0100
+            offset = offset + 5
+        end
+        if unknown_bitflag == 86 then -- 0101 0110
+            offset = offset + 6
+        end
+        if unknown_bitflag == 98 then -- 0110 0011
+            offset = offset + 2
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
+        end
+        if unknown_bitflag == 99 then -- 0110 0011
+            offset = offset + 3
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
+        end
+        -- if unknown_bitflag == 17 and bit1 == "05" then -- 0001 0001 -- found on 05c0
+        --     offset = offset -1
+        -- end
         if unknown_bitflag == 18 then -- 0001 0010
             offset = offset + 2
         end
@@ -382,8 +457,12 @@ function dissect_data_packet(tree, buffer)
         --     offset = offset -1
         -- end
 
+        if bit1 == "01" then
+            offset = offset + 1
+        end
+
         if bit1 == "55" then
-            offset = offset + 2
+            offset = offset + 3
         end
         -- if bit1 == "05" and bit2 == "C0" then
         --     offset = offset + 
