@@ -54,11 +54,19 @@ hasMs_types = {
     [1] = "Yes"
 }
 
-packetCommand_types = {
-    [1] = "Data",
+packetChannel_types = {
+    [1] = "FrameData",
     [2] = "OpenChannel",
     [3] = "Control",
-    [4] = "Handshake"
+    [4] = "Data",
+    [5] = "Data"
+}
+packetCommand_types = {
+    [1] = "Ping",
+    [1] = "ServerHandshake",
+    [2] = "ClientHandshake",
+    [3] = "Control",
+    [4] = "FrameData"
 }
 
 ssrc_types = {
@@ -90,6 +98,7 @@ add_field(ProtoField.uint32, "rtp_ssrc", "SSRC", base.DEC, ssrc_types)
 -- Unconnected Fields
 add_field(ProtoField.uint32, "unconnected_ack_length", "Ack length")
 add_field(ProtoField.uint16, "unconnected_command", "Command")
+add_field(ProtoField.string, "unconnected_unk_bytes", "Unknown bytes")
 add_field(ProtoField.uint64, "unconnected_unk_64", "Unknown uint64")
 add_field(ProtoField.uint32, "unconnected_unk_32", "Unknown uint32")
 add_field(ProtoField.uint32, "unconnected_unk_16", "Unknown uint16")
@@ -115,7 +124,8 @@ add_field(ProtoField.uint16, "gs_flag_unknown6", "hasUnknown6", base.DEC, hasMs_
 
 add_field(ProtoField.uint16, "gs_sequence", "Sequence")
 add_field(ProtoField.uint32, "gs_ms", "Microseconds since start")
-add_field(ProtoField.uint16, "gs_command", "Packet command", base.DEC, packetCommand_types)
+add_field(ProtoField.uint16, "gs_channel", "Channel", base.DEC, packetChannel_types)
+add_field(ProtoField.uint16, "gs_command", "Command", base.DEC, packetCommand_types)
 add_field(ProtoField.uint16, "gs_packet_index", "Fragment index")
 add_field(ProtoField.uint16, "gs_packet_data_packets", "Fragment data packets")
 
@@ -457,6 +467,13 @@ function dissect_data_packet(tree, buffer, ssrc)
         if unknown_bitflag == 86 then -- 0101 0110
             offset = offset + 6
         end
+        if unknown_bitflag == 97 then -- 0110 0011 -- found on 05c0
+            offset = offset - 1
+
+            if bit1 == "45" then
+                offset = offset + 1
+            end
+        end
         if unknown_bitflag == 98 then -- 0110 0011
             offset = offset + 2
 
@@ -553,8 +570,13 @@ function dissect_data_packet(tree, buffer, ssrc)
     -- Switch back to main tree
     
     -- command
-    tree:add_le(hf.gs_command, buffer(offset, 2))
-    packetinfo.command = buffer(offset, 2):le_uint()
+    -- local pre_command = buffer(offset, 2):le_uint()
+    -- if pre_command == 0 or pre_command == 1 or pre_command == 4 or pre_command == 5 then
+    --     offset = offset + 8
+    -- end
+
+    tree:add_le(hf.gs_channel, buffer(offset, 2))
+    packetinfo.channel = buffer(offset, 2):le_uint()
     offset = offset + 2
     -- packet index
     tree:add_le(hf.gs_packet_index, buffer(offset, 2))
@@ -570,27 +592,102 @@ function dissect_data_packet(tree, buffer, ssrc)
     --     offset = offset + 4
     -- end
 
+    -- if packetinfo.channel == 2 and pre_command == 4 then
+    --     packet_tags = packet_tags .. "HandshakeResponse"
 
-    if packetinfo.command == 0 and ssrc == 1027 then
-        offset = offset + 4
-    end
+    --     -- num:uint32 = 1
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- length:uint32 = 100
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- num:uint32 = 100
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- fps:uint32 = 100
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- width:uint32 = 1920
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- height:uint32 = 1080
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- num:uint32 = 0000 0000
+    --     tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --     offset = offset + 4
+
+    --     -- padding:uint16 = 0000
+    --     tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+    --     offset = offset + 2
+    -- end
 
     -- Channel open?
-    if packetinfo.command == 2 then
+    if packetinfo.channel == 2 then
         packet_tags = packet_tags .. "OpenChannel"
         local channel_name_length = buffer(offset, 2):le_uint()
 
-        tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
-        offset = offset + channel_name_length + 2
+        if channel_name_length ~= 0 then
+            tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
+            offset = offset + channel_name_length + 2
+        else
+            offset = offset
+        end
+
+        -- num:uint32
+        tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+        offset = offset + 4
+
+        -- data_length?:uint32
+        tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+        local item_length = buffer(offset, 2):le_uint()
+        offset = offset + 2
+        
+        if item_length > 0 then
+
+            -- data_length2?:uint32
+            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+            offset = offset + 2
+
+            -- item_length:uint16
+            tree:add_le(hf.unconnected_unk_bytes, buffer(offset, 4))
+            offset = offset + 4
+
+            -- padding:uint16
+            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+            offset = offset + 2
+        else
+            -- binary_length?:uint32
+            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+            local binary_length = buffer(offset, 2):le_uint()
+            offset = offset + 2
+
+            if binary_length > 0 then 
+                tree:add_le(hf.unconnected_unk_16, buffer(offset, binary_length))
+                offset = offset + binary_length + 1
+            end
+
+            -- padding:uint16
+            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+            offset = offset + 2
+        end
     end
 
     -- Data
-    if packetinfo.command == 0 then
+    if packetinfo.channel == 0 then
         packet_tags = packet_tags .. "Audio"
         -- local channel_name_length = buffer(offset, 2):le_uint()
 
         if ssrc == 1027 then -- Video frame
             packet_tags = packet_tags .. "AudioFrame"
+
+            --
         end
 
         -- tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
@@ -598,100 +695,104 @@ function dissect_data_packet(tree, buffer, ssrc)
     end
 
     -- Data
-    if packetinfo.command == 1 then
-        -- packet_tags = packet_tags .. "Data"
-        -- local channel_name_length = buffer(offset, 2):le_uint()
+    -- if packetinfo.channel == 1 then
+    --     -- packet_tags = packet_tags .. "Data"
+    --     -- local channel_name_length = buffer(offset, 2):le_uint()
 
-        if ssrc == 1026 then -- Video frame
-            packet_tags = packet_tags .. "VideoFrame"
+    --     if ssrc == 1026 then -- Video frame
+    --         packet_tags = packet_tags .. "VideoFrame"
 
-            -- num:uint32
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
-            -- command:uint32 = 4
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
+    --         -- -- num:uint32
+    --         -- tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         -- offset = offset + 4
+    --         -- -- command:uint32 = 4
+    --         -- tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         -- offset = offset + 4
 
-            -- type:uint32 = 1
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
+    --         -- type:uint32 = 1
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
 
-            -- frame_id:uint32 = 1253
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            packet_tags = packet_tags .. " FrameId=" .. buffer(offset, 4):le_uint()
-            offset = offset + 4
+    --         -- frame_id:uint32 = 1253
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         packet_tags = packet_tags .. " FrameId=" .. buffer(offset, 4):le_uint()
+    --         offset = offset + 4
 
-            -- frametype again?:uint32 = 4
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
+    --         -- frametype again?:uint32 = 4
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
             
-            -- num:uint32 = 0
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
+    --         -- num:uint32 = 0
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
 
-            -- timestamp:uint64
-            tree:add_le(hf.unconnected_unk_64, buffer(offset, 8))
-            offset = offset + 8
+    --         -- timestamp:uint64
+    --         tree:add_le(hf.unconnected_unk_64, buffer(offset, 8))
+    --         offset = offset + 8
 
-            -- packet_count:uint32 = 0
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
-            -- total_size:uint32 = 9
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
-            -- metadata_size:uint32 = 2416
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
-            -- data_offset:uint32 = 2
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            packet_tags = packet_tags .. " Offset=" .. buffer(offset, 4):le_uint()
-            local data_offset = buffer(offset, 4):le_uint()
-            offset = offset + 4
-            -- num:uint32 = 1213
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            offset = offset + 4
-            -- data_size:uint32 = 0
-            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-            local frame_size = buffer(offset, 4):le_uint()
-            offset = offset + 4
+    --         -- packet_count:uint32 = 0
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
+    --         -- total_size:uint32 = 9
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
 
-            local video_tree = tree:add(hf.connected_video_data, buffer(offset, frame_size))
+    --         -- metadata_size:uint32 = 2416
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
 
-            video_frame = ByteArray.new(buffer(offset):raw(), true):tvb("Video")
-            video_tree:add(hf.connected_video_data, video_frame())
-            offset = offset + frame_size
+    --         -- data_offset:uint32 = 2
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         packet_tags = packet_tags .. " Offset=" .. buffer(offset, 4):le_uint()
+    --         local data_offset = buffer(offset, 4):le_uint()
+    --         offset = offset + 4
 
-            if data_offset == 0 then
-                -- num:uint32 = 0
-                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-                local frame_size = buffer(offset, 4):le_uint()
-                offset = offset + 4
+    --         -- num:uint32 = 1213
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         offset = offset + 4
 
-                -- num:uint32 = 0
-                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
-                offset = offset + 4
+    --         -- data_size:uint32 = 0
+    --         tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --         local frame_size = buffer(offset, 4):le_uint()
+    --         offset = offset + 4
 
-                -- num:uint8 = 0
-                tree:add_le(hf.unconnected_unk_8, buffer(offset, 1))
-                offset = offset + 1
-            end
+    --         local video_tree = tree:add(hf.connected_video_data, buffer(offset, frame_size))
 
-            -- num:uint16 = 0
-            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
-            offset = offset + 2
-        end
-        if ssrc == 1030 then -- Input frame
-            packet_tags = packet_tags .. "InputFrame"
-        end
-        if ssrc == 1031 then -- InputFeedback frame
-            packet_tags = packet_tags .. "InputFeedbackFrame"
-        end
+    --         video_frame = ByteArray.new(buffer(offset):raw(), true):tvb("Video")
+    --         video_tree:add(hf.connected_video_data, video_frame())
+    --         offset = offset + frame_size
 
-        -- tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
-        -- offset = offset + channel_name_length + 2
-    end
+    --         if data_offset == 0 then
+    --             -- num:uint32 = 0
+    --             tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --             local frame_size = buffer(offset, 4):le_uint()
+    --             offset = offset + 4
 
-    if packetinfo.command == 3 then
+    --             -- num:uint32 = 0
+    --             tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+    --             offset = offset + 4
+
+    --             -- num:uint8 = 0
+    --             tree:add_le(hf.unconnected_unk_8, buffer(offset, 1))
+    --             offset = offset + 1
+    --         end
+
+    --         -- num:uint16 = 0
+    --         tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+    --         offset = offset + 2
+    --     end
+    --     if ssrc == 1030 then -- Input frame
+    --         packet_tags = packet_tags .. "InputFrame"
+    --     end
+    --     if ssrc == 1031 then -- InputFeedback frame
+    --         packet_tags = packet_tags .. "InputFeedbackFrame"
+    --     end
+
+    --     -- tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
+    --     -- offset = offset + channel_name_length + 2
+    -- end
+
+    if packetinfo.channel == 3 then
         packet_tags = packet_tags .. "Control"
         -- local channel_name_length = buffer(offset, 2):le_uint()
 
@@ -748,6 +849,13 @@ function dissect_data_packet(tree, buffer, ssrc)
         end
         if ssrc == 1027 then -- Audio frame
             packet_tags = packet_tags .. "Audio"
+
+            -- num:uint32
+            tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+            offset = offset + 4
+            -- padding:uint16 = 0
+            tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+            offset = offset + 2
         end
         if ssrc == 1028 then -- Message frame
             packet_tags = packet_tags .. "Message"
@@ -767,8 +875,8 @@ function dissect_data_packet(tree, buffer, ssrc)
     end
 
     -- Handshake
-    if packetinfo.command == 4 then
-        packet_tags = packet_tags .. "Handshake"
+    if packetinfo.channel == 0 or packetinfo.channel == 1 or packetinfo.channel == 4 or packetinfo.channel == 5 then
+        packet_tags = packet_tags .. "Data"
         -- local channel_name_length = buffer(offset, 2):le_uint()
 
         -- num:uint32 = 100
@@ -776,12 +884,12 @@ function dissect_data_packet(tree, buffer, ssrc)
         offset = offset + 4
 
         -- handshake_type:uint32 = 100
-        tree:add_le(hf.unconnected_unk_32, buffer(offset, 2))
-        local handshake_type = buffer(offset, 2):le_uint()
-        packet_tags = packet_tags .. " Type=" .. handshake_type
+        tree:add_le(hf.gs_command, buffer(offset, 2))
+        local opcode = buffer(offset, 2):le_uint()
+        packet_tags = packet_tags .. " Type=" .. opcode
         offset = offset + 4
 
-        if handshake_type == 1 then
+        if opcode == 1 then
             -- num:uint32 = 1
             tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
             offset = offset + 4
@@ -835,7 +943,7 @@ function dissect_data_packet(tree, buffer, ssrc)
             offset = offset + 2
         end
 
-        if handshake_type == 2 then
+        if opcode == 2 then
             -- num:uint32 = 1
             tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
             offset = offset + 4
@@ -869,6 +977,115 @@ function dissect_data_packet(tree, buffer, ssrc)
             offset = offset + 2
         end
 
+        if opcode == 4 then
+            -- packet_tags = packet_tags .. "Data"
+            -- local channel_name_length = buffer(offset, 2):le_uint()
+    
+            if ssrc == 1026 then -- Video frame
+                packet_tags = packet_tags .. " VideoFrame"
+    
+                -- -- num:uint32
+                -- tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                -- offset = offset + 4
+                -- -- command:uint32 = 4
+                -- tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                -- offset = offset + 4
+    
+                -- type:uint32 = 1
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+    
+                -- frame_id:uint32 = 1253
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                packet_tags = packet_tags .. " FrameId=" .. buffer(offset, 4):le_uint()
+                offset = offset + 4
+    
+                -- frametype again?:uint32 = 4
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+                
+                -- num:uint32 = 0
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+    
+                -- timestamp:uint64
+                tree:add_le(hf.unconnected_unk_64, buffer(offset, 8))
+                offset = offset + 8
+    
+                -- packet_count:uint32 = 0
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+                -- total_size:uint32 = 9
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+    
+                -- metadata_size:uint32 = 2416
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+    
+                -- data_offset:uint32 = 2
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                packet_tags = packet_tags .. " Offset=" .. buffer(offset, 4):le_uint()
+                local data_offset = buffer(offset, 4):le_uint()
+                offset = offset + 4
+    
+                -- num:uint32 = 1213
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                offset = offset + 4
+    
+                -- data_size:uint32 = 0
+                tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                local frame_size = buffer(offset, 4):le_uint()
+                offset = offset + 4
+    
+                local video_tree = tree:add(hf.connected_video_data, buffer(offset, frame_size))
+    
+                video_frame = ByteArray.new(buffer(offset):raw(), true):tvb("Video")
+                video_tree:add(hf.connected_video_data, video_frame())
+                offset = offset + frame_size
+    
+                if data_offset == 0 then
+                    -- num:uint32 = 0
+                    tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                    local frame_size = buffer(offset, 4):le_uint()
+                    offset = offset + 4
+    
+                    -- num:uint32 = 0
+                    tree:add_le(hf.unconnected_unk_32, buffer(offset, 4))
+                    offset = offset + 4
+    
+                    -- num:uint8 = 0
+                    tree:add_le(hf.unconnected_unk_8, buffer(offset, 1))
+                    offset = offset + 1
+                end
+    
+                -- num:uint16 = 0
+                tree:add_le(hf.unconnected_unk_16, buffer(offset, 2))
+                offset = offset + 2
+            end
+            if ssrc == 1030 then -- Input frame
+                packet_tags = packet_tags .. "InputFrame"
+            end
+            if ssrc == 1031 then -- InputFeedback frame
+                packet_tags = packet_tags .. "InputFeedbackFrame"
+            end
+    
+            -- tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
+            -- offset = offset + channel_name_length + 2
+        end
+
+        if opcode == 5 then
+            packet_tags = packet_tags .. " InputChannelRequest"
+        end
+
+        if opcode == 6 then
+            packet_tags = packet_tags .. " InputChannelResponse"
+        end
+
+        if opcode == 7 then
+            packet_tags = packet_tags .. " InputFrame"
+        end
+
         -- tree:add_le(hf.gs_openchannel_name, buffer(offset+2, channel_name_length))
         -- offset = offset + channel_name_length + 2
     end
@@ -898,10 +1115,10 @@ function dissect_data_packet(tree, buffer, ssrc)
     --         offset = offset + 2
     --     end
 
-    --     tree:add_le(hf.gs_command, buffer(offset, 2))
+    --     tree:add_le(hf.gs_channel, buffer(offset, 2))
     --     offset = offset + 2
         -- Command is 03
-        -- if packetinfo.command == 3 then
+        -- if packetinfo.channel == 3 then
         --     -- tree:add_le(hf.gs_packet_index, buffer(offset, 2))
         --     offset = offset + 4
 
@@ -1013,7 +1230,7 @@ function dissect_data_packet(tree, buffer, ssrc)
     -- Open Channel
     -- if bit1 == "45" and bit2 == "C0" then
     --     offset = offset + 5
-    --     tree:add_le(hf.gs_command, buffer(offset, 2))
+    --     tree:add_le(hf.gs_channel, buffer(offset, 2))
     --     offset = offset + 4
 
     --     if buffer(offset, 4):le_uint() == 2 then
@@ -1026,7 +1243,7 @@ function dissect_data_packet(tree, buffer, ssrc)
     -- flags:add_le(hf.gs_sequence, buffer(2, 2))
     -- flags:add_le(hf.gs_ms, buffer(4, 3))
 
-    local packetstring = "<Sequence=" .. packetinfo.sequence .. packet_headers .. " Command=" .. packetinfo.command .. "> <" .. packet_tags .. ">"
+    local packetstring = "<Sequence=" .. packetinfo.sequence .. packet_headers .. " Channel=" .. packetinfo.channel .. "> <" .. packet_tags .. ">"
     return packetstring
 
 end
