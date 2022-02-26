@@ -130,7 +130,45 @@ function xCloudVideoChannel:control(tree, fields)
         retstring = retstring .. ' KeepAlive'
 
     elseif packet_type == 3 then
-        retstring = retstring .. ' Ack'
+        -- pad
+        tree:add_le(fields.unconnected_unk_16, xCloudVideoChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        offset = offset + 4
+
+        -- data_size
+        tree:add_le(fields.connected_video_frame_size, xCloudVideoChannel._buffer(offset, 4))
+        local data_size = xCloudVideoChannel._buffer(offset, 4):le_uint()
+        offset = offset + 4
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        offset = offset + 4
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        offset = offset + 4
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_8, xCloudVideoChannel._buffer(offset, 1))
+        offset = offset + 1
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_24, xCloudVideoChannel._buffer(offset, 3))
+        local frame_id = xCloudVideoChannel._buffer(offset, 3):le_uint(0)
+        offset = offset + 3
+
+        -- -- unk
+        -- tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        -- offset = offset + 4
+
+        -- next_sequence
+        tree:add_le(fields.unconnected_unk_16, xCloudVideoChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        retstring = retstring .. ' Ack #' .. frame_id
     else 
         retstring = retstring .. ' Unknown=' .. packet_type
     end
@@ -180,6 +218,10 @@ function xCloudVideoChannel:config(tree, fields)
         -- fps
         tree:add_le(fields.connected_video_fps, xCloudVideoChannel._buffer(offset, 4))
         offset = offset + 4
+
+        -- -- relative_id
+        -- tree:add_le(fields.connected_video_timestamp, xCloudVideoChannel._buffer(offset, 4))
+        -- offset = offset + 4
 
         -- relative_timestamp
         tree:add_le(fields.connected_video_timestamp, xCloudVideoChannel._buffer(offset, 8))
@@ -272,9 +314,9 @@ function xCloudVideoChannel:frameData(tree, fields)
         tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
         offset = offset + 4
         
-        -- frame id
-        tree:add_le(fields.connected_video_frame_id, xCloudVideoChannel._buffer(offset, 4))
-        local frameid = xCloudVideoChannel._buffer(offset, 4):le_uint()
+        -- frame_index
+        tree:add_le(fields.connected_video_frame_size, xCloudVideoChannel._buffer(offset, 4))
+        local data_size = xCloudVideoChannel._buffer(offset, 4):le_uint()
         offset = offset + 4
         
         -- frame_flags -- 6 = keyframe, 4 = frame?
@@ -282,9 +324,14 @@ function xCloudVideoChannel:frameData(tree, fields)
         local frame_flags = xCloudVideoChannel._buffer(offset, 4):le_uint()
         offset = offset + 4
 
-        -- unknown
-        tree:add_le(fields.connected_video_timestamp, xCloudVideoChannel._buffer(offset, 8))
-        offset = offset + 8
+        -- frame_id
+        tree:add_le(fields.connected_video_frame_id, xCloudVideoChannel._buffer(offset, 4))
+        local frame_id = xCloudVideoChannel._buffer(offset, 4):le_uint()
+        offset = offset + 4
+
+        -- timestamp
+        tree:add_le(fields.connected_video_timestamp4, xCloudVideoChannel._buffer(offset, 4))
+        offset = offset + 4
         
         -- unknown
         tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
@@ -335,7 +382,7 @@ function xCloudVideoChannel:frameData(tree, fields)
         offset = offset + 2
 
 
-        retstring = retstring .. ' ' .. frame_flags .. ' #' .. frameid .. ' ' .. (data_offset + data_size) .. '/' .. total_size
+        retstring = retstring .. ' ' .. frame_flags .. ' #' .. frame_id .. ' ' .. (data_offset + data_size) .. '/' .. total_size
         
     else
         retstring = retstring .. ' Unknown=' .. packet_type

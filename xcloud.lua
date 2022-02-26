@@ -24,6 +24,7 @@ local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
 local xCloudMessagingChannel = require 'lib/xcloud_messaging'
 local xCloudInputChannel = require 'lib/xcloud_input'
 local xCloudInputFeedbackChannel = require 'lib/xcloud_inputfeedback'
+local xCloudQosChannel = require 'lib/xcloud_qos'
     
 -- helper functions
 local gcrypt
@@ -108,7 +109,7 @@ add_field(ProtoField.bytes, "payload_decrypted", "Decrypted payload")
 add_field(ProtoField.uint16, "rtp_sequence", "Sequence")
 add_field(ProtoField.uint32, "rtp_ssrc", "SSRC", base.DEC, ssrc_types)
 
--- Headerr Fiels
+-- Header Fiels
 add_field(ProtoField.uint16, "gs_header_flags", "Header flags", base.DEC, {}, 0xffff)
 add_field(ProtoField.uint16, "gs_header_sequence", "Sequence")
 add_field(ProtoField.uint16, "gs_header_confirm", "Confirm Sequence")
@@ -129,12 +130,15 @@ add_field(ProtoField.uint32, "unconnected_unk_8", "Unknown uint8")
 -- Connected Fields
 add_field(ProtoField.uint16, "connected_last_received", "Last received Sequence")
 add_field(ProtoField.uint16, "connected_time_ms", "Timestamp since connected")
+add_field(ProtoField.uint16, "connected_next_sequence", "Next Sequence")
+
 
 -- connected: video
 add_field(ProtoField.uint32, "connected_video_width", "Width")
 add_field(ProtoField.uint32, "connected_video_height", "Height")
 add_field(ProtoField.uint32, "connected_video_fps", "Fps")
 add_field(ProtoField.uint32, "connected_video_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_video_frame_index", "Frame Index")
 add_field(ProtoField.uint32, "connected_video_frame_totalsize", "Frame total size")
 add_field(ProtoField.uint32, "connected_video_frame_offset", "Frame offset")
 add_field(ProtoField.uint32, "connected_video_frame_metadatasize", "Frame metadata size")
@@ -142,6 +146,7 @@ add_field(ProtoField.bytes, "connected_video_frame_metadata", "Frame metadata")
 add_field(ProtoField.uint32, "connected_video_frame_size", "Frame data size")
 add_field(ProtoField.uint32, "connected_video_format_count", "Format count")
 add_field(ProtoField.uint64, "connected_video_timestamp", "Relative Timestamp")
+add_field(ProtoField.uint32, "connected_video_timestamp4", "Relative Timestamp")
 add_field(ProtoField.bytes, "connected_video_data", "Video Frame")
 add_field(ProtoField.uint32, "connected_video_codec", "Video Codec", base.DEC, {
     [0] = 'H264',
@@ -152,6 +157,7 @@ add_field(ProtoField.uint32, "connected_video_codec", "Video Codec", base.DEC, {
 add_field(ProtoField.uint32, "connected_video_type", "Video type", base.DEC, {
     [1] = 'Request',
     [2] = 'Response',
+    [3] = 'Ack',
     [4] = 'VideoFrame'
 })
 add_field(ProtoField.uint32, "connected_video_devicetype", "Device type", base.DEC, {
@@ -216,6 +222,19 @@ add_field(ProtoField.uint32, "connected_inputfeedback_type", "Feedback Type", ba
     [5] = 'ConfigRequest',
     [6] = 'ConfigResponse',
     [7] = 'FrameData'
+})
+
+-- connected: qos
+-- add_field(ProtoField.uint32, "connected_inputfeedback_frame_refid", "Reference Frame ID")
+-- add_field(ProtoField.uint32, "connected_inputfeedback_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_qos_frame_size", "Frame data size")
+add_field(ProtoField.uint32, "connected_qos_frame_index", "Frame Index")
+add_field(ProtoField.uint32, "connected_qos_frame_totalsize", "Frame total size")
+add_field(ProtoField.uint32, "connected_qos_frame_offset", "Frame offset")
+add_field(ProtoField.bytes, "connected_qos_data", "Fragment data")
+add_field(ProtoField.uint32, "connected_qos_type", "Qos Type", base.DEC, {
+    [0] = 'KeepAlive',
+    [1] = 'FrameData'
 })
 
 -- Flag fields
@@ -371,7 +390,12 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- Route channels
         if headers.command > -1 then -- Decoding successful
 
-            if rtp_ssrc:uint() == 1026 then
+            if rtp_ssrc:uint() == 1025 then
+                -- Qos
+                local channel = xCloudQosChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            elseif rtp_ssrc:uint() == 1026 then
                 -- Video
                 local channel = xCloudVideoChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
@@ -387,7 +411,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1029 then
-                -- Audio
+                -- ChatAudio
                 local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
