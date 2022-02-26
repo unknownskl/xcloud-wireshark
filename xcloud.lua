@@ -22,6 +22,7 @@ local xCloudVideoChannel = require 'lib/xcloud_video'
 local xCloudAudioChannel = require 'lib/xcloud_audio'
 local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
 local xCloudMessagingChannel = require 'lib/xcloud_messaging'
+local xCloudInputChannel = require 'lib/xcloud_input'
     
 -- helper functions
 local gcrypt
@@ -184,6 +185,21 @@ add_field(ProtoField.string, "connected_messaging_key", "Key")
 add_field(ProtoField.string, "connected_messaging_value", "Value")
 add_field(ProtoField.uint32, "connected_messaging_type", "Message type", base.DEC, {
     [2] = 'Message'
+})
+
+-- connected: input
+
+add_field(ProtoField.uint32, "connected_input_frame_refid", "Reference Frame ID")
+add_field(ProtoField.uint32, "connected_input_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_input_frame_size", "Frame data size")
+add_field(ProtoField.uint32, "connected_input_min_version", "Min version")
+add_field(ProtoField.uint32, "connected_input_max_version", "Max version")
+add_field(ProtoField.uint32, "connected_input_width", "Width")
+add_field(ProtoField.uint32, "connected_input_height", "Height")
+add_field(ProtoField.uint32, "connected_input_max_touches", "Max touches")
+add_field(ProtoField.uint32, "connected_input_type", "Input type", base.DEC, {
+    [3] = 'Ack',
+    [7] = 'Input'
 })
 
 -- Flag fields
@@ -359,6 +375,11 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
+            elseif rtp_ssrc:uint() == 1030 then
+                -- Audio
+                local channel = xCloudInputChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+                
             else
 
                 if headers.command == 2 then
