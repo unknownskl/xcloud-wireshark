@@ -21,6 +21,7 @@ local xCloudChannel = require 'lib/xcloud_channel'
 local xCloudVideoChannel = require 'lib/xcloud_video'
 local xCloudAudioChannel = require 'lib/xcloud_audio'
 local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
+local xCloudMessagingChannel = require 'lib/xcloud_messaging'
     
 -- helper functions
 local gcrypt
@@ -127,6 +128,7 @@ add_field(ProtoField.uint32, "unconnected_unk_8", "Unknown uint8")
 add_field(ProtoField.uint16, "connected_last_received", "Last received Sequence")
 add_field(ProtoField.uint16, "connected_time_ms", "Timestamp since connected")
 
+-- connected: video
 add_field(ProtoField.uint32, "connected_video_width", "Width")
 add_field(ProtoField.uint32, "connected_video_height", "Height")
 add_field(ProtoField.uint32, "connected_video_fps", "Fps")
@@ -155,7 +157,7 @@ add_field(ProtoField.uint32, "connected_video_devicetype", "Device type", base.D
     [6] = 'Xbox PC'
 })
 
-
+-- connected: audio
 add_field(ProtoField.uint64, "connected_audio_timestamp", "Relative Timestamp")
 add_field(ProtoField.uint64, "connected_audio_format_channels", "Audio Channels")
 add_field(ProtoField.uint64, "connected_audio_format_frequency", "Audio Frequency")
@@ -173,6 +175,15 @@ add_field(ProtoField.uint32, "connected_audio_type", "Audio type", base.DEC, {
     [4] = 'AudioFrame',
     [7] = 'AudioRequest',
     [16] = 'Connected'
+})
+
+-- connected: messaging
+
+add_field(ProtoField.uint32, "connected_messaging_frame_id", "Frame ID")
+add_field(ProtoField.string, "connected_messaging_key", "Key")
+add_field(ProtoField.string, "connected_messaging_value", "Value")
+add_field(ProtoField.uint32, "connected_messaging_type", "Message type", base.DEC, {
+    [2] = 'Message'
 })
 
 -- Flag fields
@@ -338,7 +349,11 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 local channel = xCloudAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
-            
+            elseif rtp_ssrc:uint() == 1028 then
+                -- Audio
+                local channel = xCloudMessagingChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
             elseif rtp_ssrc:uint() == 1029 then
                 -- Audio
                 local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)

@@ -20,7 +20,7 @@ function xCloudAudioChannel:decode(tree, fields)
 
     if command == 0 then
         -- Open Channel
-        local channel_tree = tree:add("FrameData", xCloudAudioChannel._buffer())
+        local channel_tree = tree:add("Audio FrameData", xCloudAudioChannel._buffer())
         local output = xCloudAudioChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' frameData' .. output
 
