@@ -16,6 +16,11 @@ xcloud_proto.prefs["iv_salt"] =
 
 -- Load helper classes
 local xCloudHeader = require 'lib/xcloud_header'
+local xCloudChannel = require 'lib/xcloud_channel'
+
+local xCloudVideoChannel = require 'lib/xcloud_video'
+local xCloudAudioChannel = require 'lib/xcloud_audio'
+local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
     
 -- helper functions
 local gcrypt
@@ -122,6 +127,32 @@ add_field(ProtoField.uint32, "unconnected_unk_8", "Unknown uint8")
 add_field(ProtoField.uint16, "connected_last_received", "Last received Sequence")
 add_field(ProtoField.uint16, "connected_time_ms", "Timestamp since connected")
 
+add_field(ProtoField.uint32, "connected_video_width", "Width")
+add_field(ProtoField.uint32, "connected_video_height", "Height")
+add_field(ProtoField.uint32, "connected_video_fps", "Fps")
+add_field(ProtoField.uint32, "connected_video_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_video_frame_totalsize", "Frame total size")
+add_field(ProtoField.uint32, "connected_video_frame_offset", "Frame offset")
+add_field(ProtoField.uint32, "connected_video_frame_metadatasize", "Frame metadata size")
+add_field(ProtoField.bytes, "connected_video_frame_metadata", "Frame metadata")
+add_field(ProtoField.uint32, "connected_video_frame_size", "Frame data size")
+add_field(ProtoField.uint32, "connected_video_format_count", "Format count")
+add_field(ProtoField.uint64, "connected_video_timestamp", "Relative Timestamp")
+add_field(ProtoField.uint32, "connected_video_codec", "Video Codec", base.DEC, {
+    [0] = 'H264',
+    [1] = 'H265',
+    [2] = 'YUV',
+    [3] = 'RGB'
+})
+add_field(ProtoField.uint32, "connected_video_type", "Video type", base.DEC, {
+    [1] = 'Request',
+    [2] = 'Response',
+    [4] = 'VideoFrame'
+})
+add_field(ProtoField.uint32, "connected_video_devicetype", "Device type", base.DEC, {
+    [4] = 'Xbox',
+    [6] = 'Xbox PC'
+})
 
 add_field(ProtoField.bytes, "connected_video_data", "Video Frame")
 
@@ -168,6 +199,7 @@ add_field(ProtoField.uint32, "gs_video_data_length", "Video Data length")
 add_field(ProtoField.uint32, "gs_video_data_offset", "Video Data offset")
 
 add_field(ProtoField.string, "gs_openchannel_name", "Channel Name")
+add_field(ProtoField.uint16, "gs_openchannel_length", "Channel name length")
 add_field(ProtoField.uint32, "gs_temp_length", "DEBUG")
 add_field(ProtoField.uint32, "gs_temp_data", "DEBUG DATA")
 
@@ -267,12 +299,45 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         decr_tvb = ByteArray.new(decrypted, true):tvb("Decrypted payload")
 
         -- Process decrypted tree
-        local decryped_tree = subtree:add(hf.payload_decrypted, decr_tvb())
+        local decrypted_tree = subtree:add(hf.payload_decrypted, decr_tvb())
 
-        -- local packetinfo = dissect_data_packet(decryped_tree, decr_tvb, rtp_ssrc:uint())
-        local headers = xCloudHeader(decr_tvb():tvb()):decode(decryped_tree, hf)
-        -- print(headers:decode().string)
+        -- Read packet data
+        local headers_tree = decrypted_tree:add("Header", decr_tvb())
+        local headers = xCloudHeader(decr_tvb():tvb()):decode(headers_tree, hf)
         local packetinfo = headers.string
+
+        -- Route channels
+        if headers.command > -1 then -- Decoding successful
+
+            if rtp_ssrc:uint() == 1026 then
+                -- Audio
+                local channel = xCloudVideoChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            elseif rtp_ssrc:uint() == 1027 then
+                -- Audio
+                local channel = xCloudAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            
+            elseif rtp_ssrc:uint() == 1029 then
+                -- Audio
+                local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            else
+
+                if headers.command == 2 then
+                    -- Process open channel
+                    local channel_tree = decrypted_tree:add("OpenChannel", decr_tvb())
+                    local openchannel = xCloudChannel(decr_tvb():range(headers.offset):tvb()):openChannel(channel_tree, hf)
+                    packetinfo = packetinfo .. ' ' .. openchannel.string
+                end
+            end
+
+        else
+            packetinfo = packetinfo .. " [error command is -1]"
+        end
 
         -- packetinfo = "<RTPSequence=" .. tvbuf(2, 2):uint() .. " SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] Flags=" .. string.tohex(decr_tvb(0, 2):raw()) .. "> " .. packetinfo
         pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
