@@ -23,6 +23,7 @@ local xCloudAudioChannel = require 'lib/xcloud_audio'
 local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
 local xCloudMessagingChannel = require 'lib/xcloud_messaging'
 local xCloudInputChannel = require 'lib/xcloud_input'
+local xCloudInputFeedbackChannel = require 'lib/xcloud_inputfeedback'
     
 -- helper functions
 local gcrypt
@@ -179,7 +180,6 @@ add_field(ProtoField.uint32, "connected_audio_type", "Audio type", base.DEC, {
 })
 
 -- connected: messaging
-
 add_field(ProtoField.uint32, "connected_messaging_frame_id", "Frame ID")
 add_field(ProtoField.string, "connected_messaging_key", "Key")
 add_field(ProtoField.string, "connected_messaging_value", "Value")
@@ -188,7 +188,6 @@ add_field(ProtoField.uint32, "connected_messaging_type", "Message type", base.DE
 })
 
 -- connected: input
-
 add_field(ProtoField.uint32, "connected_input_frame_refid", "Reference Frame ID")
 add_field(ProtoField.uint32, "connected_input_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_input_frame_size", "Frame data size")
@@ -200,6 +199,23 @@ add_field(ProtoField.uint32, "connected_input_max_touches", "Max touches")
 add_field(ProtoField.uint32, "connected_input_type", "Input type", base.DEC, {
     [3] = 'Ack',
     [7] = 'Input'
+})
+
+-- connected: inputfeedback
+add_field(ProtoField.uint32, "connected_inputfeedback_frame_refid", "Reference Frame ID")
+add_field(ProtoField.uint32, "connected_inputfeedback_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_inputfeedback_frame_size", "Frame data size")
+add_field(ProtoField.uint32, "connected_inputfeedback_min_version", "Min version")
+add_field(ProtoField.uint32, "connected_inputfeedback_max_version", "Max version")
+add_field(ProtoField.uint32, "connected_inputfeedback_width", "Width")
+add_field(ProtoField.uint32, "connected_inputfeedback_height", "Height")
+add_field(ProtoField.uint64, "connected_inputfeedback_timestamp", "Relative Timestamp")
+add_field(ProtoField.uint32, "connected_inputfeedback_type", "Feedback Type", base.DEC, {
+    [0] = 'KeepAlive',
+    [3] = 'Ack',
+    [5] = 'ConfigRequest',
+    [6] = 'ConfigResponse',
+    [7] = 'FrameData'
 })
 
 -- Flag fields
@@ -356,7 +372,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         if headers.command > -1 then -- Decoding successful
 
             if rtp_ssrc:uint() == 1026 then
-                -- Audio
+                -- Video
                 local channel = xCloudVideoChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
@@ -366,7 +382,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1028 then
-                -- Audio
+                -- Messaging
                 local channel = xCloudMessagingChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
@@ -376,8 +392,13 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1030 then
-                -- Audio
+                -- Input
                 local channel = xCloudInputChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            elseif rtp_ssrc:uint() == 1031 then
+                -- InputFeedback
+                local channel = xCloudInputFeedbackChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
                 
             else
