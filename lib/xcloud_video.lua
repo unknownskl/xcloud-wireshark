@@ -338,7 +338,7 @@ function xCloudVideoChannel:frameData(tree, fields)
         retstring = retstring .. ' ' .. frame_flags .. ' #' .. frameid .. ' ' .. (data_offset + data_size) .. '/' .. total_size
         
     else
-        retstring = retstring .. ' Unknown'
+        retstring = retstring .. ' Unknown=' .. packet_type
     end
 
     return retstring

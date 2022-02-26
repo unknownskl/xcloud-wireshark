@@ -138,6 +138,7 @@ add_field(ProtoField.bytes, "connected_video_frame_metadata", "Frame metadata")
 add_field(ProtoField.uint32, "connected_video_frame_size", "Frame data size")
 add_field(ProtoField.uint32, "connected_video_format_count", "Format count")
 add_field(ProtoField.uint64, "connected_video_timestamp", "Relative Timestamp")
+add_field(ProtoField.bytes, "connected_video_data", "Video Frame")
 add_field(ProtoField.uint32, "connected_video_codec", "Video Codec", base.DEC, {
     [0] = 'H264',
     [1] = 'H265',
@@ -154,7 +155,25 @@ add_field(ProtoField.uint32, "connected_video_devicetype", "Device type", base.D
     [6] = 'Xbox PC'
 })
 
-add_field(ProtoField.bytes, "connected_video_data", "Video Frame")
+
+add_field(ProtoField.uint64, "connected_audio_timestamp", "Relative Timestamp")
+add_field(ProtoField.uint64, "connected_audio_format_channels", "Audio Channels")
+add_field(ProtoField.uint64, "connected_audio_format_frequency", "Audio Frequency")
+add_field(ProtoField.uint32, "connected_audio_format_count", "Format count")
+add_field(ProtoField.bytes, "connected_audio_data", "Audio Frame")
+add_field(ProtoField.uint32, "connected_audio_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_audio_frame_refid", "Reference Frame ID")
+add_field(ProtoField.uint32, "connected_audio_frame_size", "Frame data size")
+add_field(ProtoField.uint32, "connected_audio_codec", "Audio Codec", base.DEC, {
+    [0] = 'Opus',
+    [1] = 'PCM',
+    [2] = 'AAC'
+})
+add_field(ProtoField.uint32, "connected_audio_type", "Audio type", base.DEC, {
+    [4] = 'AudioFrame',
+    [7] = 'AudioRequest',
+    [16] = 'Connected'
+})
 
 -- Flag fields
 add_field(ProtoField.uint16, "gs_flag_opcode", "Bitflags", base.DEC, {}, 0xffff)
