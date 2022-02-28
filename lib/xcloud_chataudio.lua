@@ -14,16 +14,18 @@ function xCloudChatAudioChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'ChatAudio'
-    local command = xCloudChatAudioChannel._buffer(0, 2):le_uint()
+    tree:add_le(fields.gs_channel, xCloudChatAudioChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudChatAudioChannel._buffer(2, 2))
+    local channel = xCloudChatAudioChannel._buffer(0, 2):le_uint()
 
     local offset = 4
 
-    if command == 2 then
+    if channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("ChatAudio OpenChannel", xCloudChatAudioChannel._buffer())
         xCloudChatAudioChannel:openChannel(channel_tree, fields)
     else
-        data.string = data.string .. ' (Unknown)'
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'

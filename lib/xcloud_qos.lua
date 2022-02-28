@@ -14,42 +14,44 @@ function xCloudQosChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'Qos'
-    local command = xCloudQosChannel._buffer(0, 2):le_uint()
+    tree:add_le(fields.gs_channel, xCloudQosChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudQosChannel._buffer(2, 2))
+    local channel = xCloudQosChannel._buffer(0, 2):le_uint()
 
     local offset = 4
 
-    if command == 0 then
+    if channel == 0 then
         -- Open Channel
         local channel_tree = tree:add("Qos FrameData", xCloudQosChannel._buffer())
         local output = xCloudQosChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' Data' .. output
 
-    elseif command == 1 then
+    elseif channel == 1 then
         -- Open Channel
         local channel_tree = tree:add("Qos FrameData", xCloudQosChannel._buffer())
         local output = xCloudQosChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' FrameData' .. output
 
-    elseif command == 2 then
+    elseif channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("Qos OpenChannel", xCloudQosChannel._buffer())
         local output = xCloudQosChannel:openChannel(channel_tree, fields)
         data.string = data.string .. ' openChannel' .. output
 
-    elseif command == 3 then
+    elseif channel == 3 then
         -- Control
         local channel_tree = tree:add("Qos Control", xCloudQosChannel._buffer())
         local output = xCloudQosChannel:control(channel_tree, fields)
         data.string = data.string .. ' Control' .. output
 
-    elseif command == 4 then
+    elseif channel == 4 then
         -- Control
         local channel_tree = tree:add("Qos Config", xCloudQosChannel._buffer())
         local output = xCloudQosChannel:config(channel_tree, fields)
         data.string = data.string .. ' Config' .. output
 
     else
-        data.string = data.string .. ' Unknown=' .. command
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'

@@ -16,7 +16,7 @@ xcloud_proto.prefs["iv_salt"] =
 
 -- Load helper classes
 local xCloudHeader = require 'lib/xcloud_header'
-local xCloudChannel = require 'lib/xcloud_channel'
+-- local xCloudChannel = require 'lib/xcloud_channel'
 
 local xCloudVideoChannel = require 'lib/xcloud_video'
 local xCloudAudioChannel = require 'lib/xcloud_audio'
@@ -25,6 +25,8 @@ local xCloudMessagingChannel = require 'lib/xcloud_messaging'
 local xCloudInputChannel = require 'lib/xcloud_input'
 local xCloudInputFeedbackChannel = require 'lib/xcloud_inputfeedback'
 local xCloudQosChannel = require 'lib/xcloud_qos'
+local xCloudControlChannel = require 'lib/xcloud_control'
+local xCloudCoreChannel = require 'lib/xcloud_core'
     
 -- helper functions
 local gcrypt
@@ -115,6 +117,9 @@ add_field(ProtoField.uint16, "gs_header_sequence", "Sequence")
 add_field(ProtoField.uint16, "gs_header_confirm", "Confirm Sequence")
 add_field(ProtoField.uint16, "gs_header_ms", "Ms")
 add_field(ProtoField.uint16, "gs_header_fragment", "Fragment num")
+add_field(ProtoField.bytes, "gs_header_bytes", "Header bytes")
+add_field(ProtoField.uint16, "gs_header_size", "Header Size")
+add_field(ProtoField.uint16, "gs_header_flags", "header flags", base.DEC, {}, 0xffff)
 
 -- Unconnected Fields
 add_field(ProtoField.uint32, "unconnected_ack_length", "Ack length")
@@ -137,7 +142,7 @@ add_field(ProtoField.uint16, "connected_next_sequence", "Next Sequence")
 add_field(ProtoField.uint32, "connected_video_width", "Width")
 add_field(ProtoField.uint32, "connected_video_height", "Height")
 add_field(ProtoField.uint32, "connected_video_fps", "Fps")
-add_field(ProtoField.uint32, "connected_video_frame_id", "Frame ID")
+add_field(ProtoField.bytes, "connected_video_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_video_frame_index", "Frame Index")
 add_field(ProtoField.uint32, "connected_video_frame_totalsize", "Frame total size")
 add_field(ProtoField.uint32, "connected_video_frame_offset", "Frame offset")
@@ -171,7 +176,7 @@ add_field(ProtoField.uint64, "connected_audio_format_channels", "Audio Channels"
 add_field(ProtoField.uint64, "connected_audio_format_frequency", "Audio Frequency")
 add_field(ProtoField.uint32, "connected_audio_format_count", "Format count")
 add_field(ProtoField.bytes, "connected_audio_data", "Audio Frame")
-add_field(ProtoField.uint32, "connected_audio_frame_id", "Frame ID")
+add_field(ProtoField.bytes, "connected_audio_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_audio_frame_refid", "Reference Frame ID")
 add_field(ProtoField.uint32, "connected_audio_frame_size", "Frame data size")
 add_field(ProtoField.uint32, "connected_audio_codec", "Audio Codec", base.DEC, {
@@ -186,7 +191,7 @@ add_field(ProtoField.uint32, "connected_audio_type", "Audio type", base.DEC, {
 })
 
 -- connected: messaging
-add_field(ProtoField.uint32, "connected_messaging_frame_id", "Frame ID")
+add_field(ProtoField.bytes, "connected_messaging_frame_id", "Frame ID")
 add_field(ProtoField.string, "connected_messaging_key", "Key")
 add_field(ProtoField.string, "connected_messaging_value", "Value")
 add_field(ProtoField.uint32, "connected_messaging_type", "Message type", base.DEC, {
@@ -195,7 +200,7 @@ add_field(ProtoField.uint32, "connected_messaging_type", "Message type", base.DE
 
 -- connected: input
 add_field(ProtoField.uint32, "connected_input_frame_refid", "Reference Frame ID")
-add_field(ProtoField.uint32, "connected_input_frame_id", "Frame ID")
+add_field(ProtoField.bytes, "connected_input_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_input_frame_size", "Frame data size")
 add_field(ProtoField.uint32, "connected_input_min_version", "Min version")
 add_field(ProtoField.uint32, "connected_input_max_version", "Max version")
@@ -209,7 +214,7 @@ add_field(ProtoField.uint32, "connected_input_type", "Input type", base.DEC, {
 
 -- connected: inputfeedback
 add_field(ProtoField.uint32, "connected_inputfeedback_frame_refid", "Reference Frame ID")
-add_field(ProtoField.uint32, "connected_inputfeedback_frame_id", "Frame ID")
+add_field(ProtoField.bytes, "connected_inputfeedback_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_inputfeedback_frame_size", "Frame data size")
 add_field(ProtoField.uint32, "connected_inputfeedback_min_version", "Min version")
 add_field(ProtoField.uint32, "connected_inputfeedback_max_version", "Max version")
@@ -252,6 +257,7 @@ add_field(ProtoField.uint16, "gs_flag_unknown6", "hasUnknown6", base.DEC, hasMs_
 add_field(ProtoField.uint16, "gs_input_buttons", "Button Bitflags", base.DEC, {}, 0xffff)
 
 add_field(ProtoField.uint16, "gs_sequence", "Sequence")
+add_field(ProtoField.uint16, "gs_control_sequence", "Control Sequence")
 add_field(ProtoField.uint32, "gs_ms", "Microseconds since start")
 add_field(ProtoField.uint16, "gs_channel", "Channel", base.DEC, packetChannel_types)
 add_field(ProtoField.uint16, "gs_command", "Command", base.DEC, packetCommand_types)
@@ -273,7 +279,7 @@ add_field(ProtoField.uint32, "gs_packet_kv_value_length", "KV Value Length")
 add_field(ProtoField.uint32, "gs_packet_kv_payload_length", "KV Payload Length")
 
 add_field(ProtoField.uint32, "gs_video_fdata", "Video fData", base.DEC, fData_types)
-add_field(ProtoField.uint32, "gs_video_frameid", "Video Frame ID")
+add_field(ProtoField.bytes, "gs_video_frameid", "Video Frame ID")
 add_field(ProtoField.uint64, "gs_video_timestamp", "Video Timestamp")
 add_field(ProtoField.uint32, "gs_video_data_total_length", "Video Data Total length")
 add_field(ProtoField.uint32, "gs_video_data_length", "Video Data length")
@@ -382,15 +388,28 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- Process decrypted tree
         local decrypted_tree = subtree:add(hf.payload_decrypted, decr_tvb())
 
-        -- Read packet data
-        local headers_tree = decrypted_tree:add("Header", decr_tvb())
-        local headers = xCloudHeader(decr_tvb():tvb()):decode(headers_tree, hf)
-        local packetinfo = headers.string
+        local packetinfo = ''
+        -- if rtp_ssrc:uint() ~= 0 then
+            -- Read packet data
+            local headers_tree = decrypted_tree:add("Header", decr_tvb())
+            local headers = xCloudHeader(decr_tvb():tvb()):decode(headers_tree, hf)
+            packetinfo = headers.string
+        -- end
 
         -- Route channels
-        if headers.command > -1 then -- Decoding successful
+        -- if headers and headers.command > -1 or rtp_ssrc:uint() == 0 then -- Decoding successful
 
-            if rtp_ssrc:uint() == 1025 then
+            if rtp_ssrc:uint() == 0 then
+                -- Core
+                -- local channel = xCloudCoreChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
+
+            elseif rtp_ssrc:uint() == 1024 then
+                -- Control
+                local channel = xCloudControlChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                packetinfo = packetinfo .. ' ' .. channel.string
+
+            elseif rtp_ssrc:uint() == 1025 then
                 -- Qos
                 local channel = xCloudQosChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
                 packetinfo = packetinfo .. ' ' .. channel.string
@@ -427,17 +446,19 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 
             else
 
-                if headers.command == 2 then
-                    -- Process open channel
-                    local channel_tree = decrypted_tree:add("OpenChannel", decr_tvb())
-                    local openchannel = xCloudChannel(decr_tvb():range(headers.offset):tvb()):openChannel(channel_tree, hf)
-                    packetinfo = packetinfo .. ' ' .. openchannel.string
-                end
+                packetinfo = packetinfo .. ' UnknownSSRC=' .. rtp_ssrc:uint()
+
+                -- if headers.command == 2 then
+                --     -- Process open channel
+                --     local channel_tree = decrypted_tree:add("OpenChannel", decr_tvb())
+                --     local openchannel = xCloudChannel(decr_tvb():range(headers.offset):tvb()):openChannel(channel_tree, hf)
+                --     packetinfo = packetinfo .. ' ' .. openchannel.string
+                -- end
             end
 
-        else
-            packetinfo = packetinfo .. " [error command is -1]"
-        end
+        -- else
+        --     packetinfo = packetinfo .. " [error command is -1]"
+        -- end
 
         -- packetinfo = "<RTPSequence=" .. tvbuf(2, 2):uint() .. " SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] Flags=" .. string.tohex(decr_tvb(0, 2):raw()) .. "> " .. packetinfo
         pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo

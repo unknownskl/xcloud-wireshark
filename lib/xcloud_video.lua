@@ -14,36 +14,38 @@ function xCloudVideoChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'Video'
-    local command = xCloudVideoChannel._buffer(0, 2):le_uint()
+    tree:add_le(fields.gs_channel, xCloudVideoChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudVideoChannel._buffer(2, 2))
+    local channel = xCloudVideoChannel._buffer(0, 2):le_uint()
 
     local offset = 4
 
-    if command == 1 then
+    if channel == 1 then
         -- FrameData
         local channel_tree = tree:add("Video FrameData", xCloudVideoChannel._buffer())
         local output = xCloudVideoChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' frameData' .. output
 
-    elseif command == 2 then
+    elseif channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("Video OpenChannel", xCloudVideoChannel._buffer())
         local output = xCloudVideoChannel:openChannel(channel_tree, fields)
         data.string = data.string .. ' openChannel' .. output
 
-    elseif command == 3 then
+    elseif channel == 3 then
         -- Control
         local channel_tree = tree:add("Video Control", xCloudVideoChannel._buffer())
         local output = xCloudVideoChannel:control(channel_tree, fields)
         data.string = data.string .. ' Control' .. output
 
-    elseif command == 4 then
+    elseif channel == 4 then
         -- Config
         local channel_tree = tree:add("Video Config", xCloudVideoChannel._buffer())
         local output = xCloudVideoChannel:config(channel_tree, fields)
         data.string = data.string .. ' Config' .. output
 
     else
-        data.string = data.string .. ' (Unknown)'
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'
@@ -149,6 +151,7 @@ function xCloudVideoChannel:control(tree, fields)
 
         -- unk
         tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        local frame_id = xCloudVideoChannel._buffer(offset, 4):le_uint(0)
         offset = offset + 4
 
         -- unk
@@ -157,7 +160,6 @@ function xCloudVideoChannel:control(tree, fields)
 
         -- unk
         tree:add_le(fields.unconnected_unk_24, xCloudVideoChannel._buffer(offset, 3))
-        local frame_id = xCloudVideoChannel._buffer(offset, 3):le_uint(0)
         offset = offset + 3
 
         -- -- unk
@@ -338,7 +340,7 @@ function xCloudVideoChannel:frameData(tree, fields)
         offset = offset + 4
         
         -- packet_count?
-        tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
+        tree:add_le(fields.connected_video_frame_metadatasize, xCloudVideoChannel._buffer(offset, 4))
         offset = offset + 4
         
         -- total_size

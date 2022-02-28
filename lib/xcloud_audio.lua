@@ -14,30 +14,32 @@ function xCloudAudioChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'Audio'
-    local command = xCloudAudioChannel._buffer(0, 2):le_uint()
+    tree:add_le(fields.gs_channel, xCloudAudioChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudAudioChannel._buffer(2, 2))
+    local channel = xCloudAudioChannel._buffer(0, 2):le_uint()
 
     local offset = 4
 
-    if command == 0 then
+    if channel == 0 then
         -- Open Channel
         local channel_tree = tree:add("Audio FrameData", xCloudAudioChannel._buffer())
         local output = xCloudAudioChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' frameData' .. output
 
-    elseif command == 2 then
+    elseif channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("Audio OpenChannel", xCloudAudioChannel._buffer())
         local output = xCloudAudioChannel:openChannel(channel_tree, fields)
         data.string = data.string .. ' openChannel' .. output
 
-    elseif command == 3 then
+    elseif channel == 3 then
         -- Control
         local channel_tree = tree:add("Audio Control", xCloudAudioChannel._buffer())
         local output = xCloudAudioChannel:control(channel_tree, fields)
         data.string = data.string .. ' Control' .. output
 
     else
-        data.string = data.string .. ' (Unknown)'
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'

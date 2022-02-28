@@ -14,35 +14,37 @@ function xCloudInputFeedbackChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'InputFeedback'
-    local command = xCloudInputFeedbackChannel._buffer(0, 2):le_uint()
+    tree:add_le(fields.gs_channel, xCloudInputFeedbackChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudInputFeedbackChannel._buffer(2, 2))
+    local channel = xCloudInputFeedbackChannel._buffer(0, 2):le_uint()
 
     local offset = 4
-    if command == 1 then
+    if channel == 1 then
         -- Open Channel
         local channel_tree = tree:add("InputFeedback FrameData", xCloudInputFeedbackChannel._buffer())
         local output = xCloudInputFeedbackChannel:frameData(channel_tree, fields)
         data.string = data.string .. ' FrameData' .. output
 
-    elseif command == 2 then
+    elseif channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("InputFeedback OpenChannel", xCloudInputFeedbackChannel._buffer())
         local output = xCloudInputFeedbackChannel:openChannel(channel_tree, fields)
         data.string = data.string .. ' openChannel' .. output
 
-    elseif command == 3 then
+    elseif channel == 3 then
         -- Control
         local channel_tree = tree:add("InputFeedback Control", xCloudInputFeedbackChannel._buffer())
         local output = xCloudInputFeedbackChannel:control(channel_tree, fields)
         data.string = data.string .. ' Control' .. output
 
-    elseif command == 4 then
+    elseif channel == 4 then
         -- Control
         local channel_tree = tree:add("InputFeedback Config", xCloudInputFeedbackChannel._buffer())
         local output = xCloudInputFeedbackChannel:config(channel_tree, fields)
         data.string = data.string .. ' Config' .. output
 
     else
-        data.string = data.string .. ' Unknown=' .. command
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'

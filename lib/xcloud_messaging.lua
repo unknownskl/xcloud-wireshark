@@ -14,23 +14,26 @@ function xCloudMessagingChannel:decode(tree, fields)
     local data = {}
 
     data.string = 'Messaging'
-    local command = xCloudMessagingChannel._buffer(0, 2):le_uint()
+    
+    tree:add_le(fields.gs_channel, xCloudMessagingChannel._buffer(0, 2))
+    tree:add_le(fields.gs_control_sequence, xCloudMessagingChannel._buffer(2, 2))
+    local channel = xCloudMessagingChannel._buffer(0, 2):le_uint()
 
     local offset = 4
-    if command == 2 then
+    if channel == 2 then
         -- Open Channel
         local channel_tree = tree:add("Messaging OpenChannel", xCloudMessagingChannel._buffer())
         local output = xCloudMessagingChannel:openChannel(channel_tree, fields)
         data.string = data.string .. ' openChannel' .. output
 
-    elseif command == 3 then
+    elseif channel == 3 then
         -- Control
         local channel_tree = tree:add("Messaging Control", xCloudMessagingChannel._buffer())
         local output = xCloudMessagingChannel:control(channel_tree, fields)
         data.string = data.string .. ' Control' .. output
 
     else
-        data.string = data.string .. ' (Unknown)'
+        data.string = data.string .. ' Channel=' .. channel
     end
 
     data.string = '[' .. data.string .. ']'
