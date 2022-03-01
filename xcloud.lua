@@ -17,7 +17,12 @@ xcloud_proto.prefs["iv_salt"] =
 -- Load helper classes
 local xCloudHeader = require 'lib/xcloud_header'
 -- local xCloudChannel = require 'lib/xcloud_channel'
+local xCloudFrame = require 'lib/xcloud_frame'
 
+-- Refactored classes
+local xCloudChannelControl = require 'lib/channels/control'
+
+-- Old classes
 local xCloudVideoChannel = require 'lib/xcloud_video'
 local xCloudAudioChannel = require 'lib/xcloud_audio'
 local xCloudChatAudioChannel = require 'lib/xcloud_chataudio'
@@ -66,6 +71,7 @@ hasMs_types = {
     [0] = "No",
     [1] = "Yes"
 }
+
 
 packetChannel_types = {
     [1] = "FrameData",
@@ -133,9 +139,39 @@ add_field(ProtoField.int32, "unconnected_unk_16", "Unknown uint16")
 add_field(ProtoField.uint32, "unconnected_unk_8", "Unknown uint8")
 
 -- Connected Fields
+message_types = {
+    [0] = "FrameData_Slim",
+    [1] = "FrameData_Fragmented",
+    [2] = "channelControl",
+    [3] = "Control",
+    [4] = "Config",
+    [5] = "ConfigSuccess?"
+}
+
+frame_types = {
+    -- [1] = "?QOS?",
+    [2] = "KeyValue",
+    [3] = "Confirm",
+    [4] = "VideoFrame",
+    [5] = "Config?",
+    [7] = "InputFrame",
+    -- [16] = "Audio?",
+}
 add_field(ProtoField.uint16, "connected_last_received", "Last received Sequence")
 add_field(ProtoField.uint16, "connected_time_ms", "Timestamp since connected")
 add_field(ProtoField.uint16, "connected_next_sequence", "Next Sequence")
+add_field(ProtoField.uint16, "connected_message_type", "Message type", base.DEC, message_types)
+add_field(ProtoField.uint32, "connected_frame_index", "Frame Index")
+add_field(ProtoField.uint32, "connected_frame_version", "Frame Version")
+add_field(ProtoField.bytes, "connected_frame_id", "Frame ID")
+add_field(ProtoField.uint32, "connected_frame_type", "Frame Type", base.DEC, frame_types)
+add_field(ProtoField.uint32, "connected_frame_subtype", "Frame SubType")
+add_field(ProtoField.uint64, "connected_frame_yaml_size", "Frame Yaml Size")
+add_field(ProtoField.string, "connected_frame_yaml_data", "Frame Yaml Data")
+
+add_field(ProtoField.uint32, "connected_openchannel_size", "OpenChannel name size")
+add_field(ProtoField.string, "connected_openchannel_name", "OpenChannel name")
+add_field(ProtoField.bytes, "connected_openchannel_padding", "OpenChannel name padding")
 
 
 -- connected: video
@@ -289,6 +325,7 @@ add_field(ProtoField.string, "gs_openchannel_name", "Channel Name")
 add_field(ProtoField.uint16, "gs_openchannel_length", "Channel name length")
 add_field(ProtoField.uint32, "gs_temp_length", "DEBUG")
 add_field(ProtoField.uint32, "gs_temp_data", "DEBUG DATA")
+add_field(ProtoField.bytes, "check_length_error", "SIZE LENGTH ERROR")
 
 xcloud_proto.fields = hf
 
@@ -347,19 +384,9 @@ end
 -- create a function to dissect it
 function xcloud_proto.dissector(tvbuf, pinfo, tree)
     pinfo.cols.protocol = "xCloud-Gamestreaming" --xcloud_proto.name
-
-    -- Read RTP Headers using the RTP Dissector
-    -- rtp_table = Dissector.get ("rtp")
-    -- tvb=tvbuf(0)
-    -- rtp_table:call(tvbuf(0):tvb(), pinfo, tree)
-
-    -- tvb=tvbuf(12)
     is_rtp=tvbuf(0, 1)
 
     if string.tohex(is_rtp:raw()) == "80" then
-        -- First packet is from client?
-        -- print(pinfo)
-
         local decryption_key = string.fromhex(xcloud_proto.prefs.crypt_key)
         local subtree = tree:add("xCloud Gamestreaming", tvbuf(12):tvb())
 
@@ -387,62 +414,132 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         -- Process decrypted tree
         local decrypted_tree = subtree:add(hf.payload_decrypted, decr_tvb())
-
         local packetinfo = ''
-        -- if rtp_ssrc:uint() ~= 0 then
-            -- Read packet data
-            local headers_tree = decrypted_tree:add("Header", decr_tvb())
-            local headers = xCloudHeader(decr_tvb():tvb()):decode(headers_tree, hf)
-            packetinfo = headers.string
+        
+        -- Read packet data
+        local headers_tree = decrypted_tree:add("Header", decr_tvb())
+        local headers = xCloudHeader(decr_tvb():tvb()):decode(headers_tree, hf)
+        packetinfo = headers.string
         -- end
 
         -- Route channels
         -- if headers and headers.command > -1 or rtp_ssrc:uint() == 0 then -- Decoding successful
+        local data_tree = decrypted_tree:add("Data", decr_tvb(headers.offset))
+
+        -- Create data view
+        -- local video_tree = tree:add(fields.connected_video_data, xCloudVideoChannel._buffer(offset, data_size))
+
+        data_payload = ByteArray.new(decr_tvb(headers.offset, headers.data_size):raw(), true):tvb("Data Payload")
+        -- video_tree:add(fields.connected_video_data, data_payload())
+        -- offset = offset + data_size
+        -- End create data view
+
+        if rtp_ssrc:uint() == 0 then
+            -- Process core data?
+            if headers.data_size > 0 then
+                packetinfo = packetinfo .. ' [CORE-DATA=' .. headers.data_size .. ']'
+            else
+                packetinfo = packetinfo .. ' [CORE-NO-DATA]'
+            end
+
+        else
+            if headers.data_size > 0 then
+                -- We have data and we are not on the core channel
+                local message_type = decr_tvb(headers.offset, 1):le_uint()
+                local datapacket_tree = decrypted_tree:add("Datapacket", data_payload())
+                -- packetinfo = packetinfo .. ' TYPE=' .. message_type .. '[' .. (message_types[message_type] or 'Unknown') .. ']'
+                -- packetinfo = packetinfo .. ' [DATA='.. headers.data_size ..']'
+
+                datapacket_tree:add_le(hf.connected_frame_type, data_payload(0, 2))
+                datapacket_tree:add_le(hf.connected_frame_subtype, data_payload(2, 2))
+                
+                -- if message_type == 0 then
+                --     -- We got frame data
+                --     local framedata = xCloudFrame(decr_tvb(headers.offset, headers.data_size):tvb()):decode(datapacket_tree, hf)
+                --     packetinfo = packetinfo .. ' ' .. framedata.string
+
+                -- elseif message_type == 1 then
+                --     -- We got frame data
+                --     local framedata = xCloudFrame(decr_tvb(headers.offset, headers.data_size):tvb()):decode(datapacket_tree, hf)
+                --     packetinfo = packetinfo .. ' ' .. framedata.string
+
+                -- elseif message_type == 3 then
+                --     -- We got frame data
+                --     local framedata = xCloudFrame(decr_tvb(headers.offset, headers.data_size):tvb()):decode(datapacket_tree, hf)
+                --     packetinfo = packetinfo .. ' ' .. framedata.string
+
+                -- elseif message_type == 4 then
+                --     -- We got frame data
+                --     local framedata = xCloudFrame(decr_tvb(headers.offset, headers.data_size):tvb()):decode(datapacket_tree, hf)
+                --     packetinfo = packetinfo .. ' ' .. framedata.string
+
+                -- else 
+                    packetinfo = packetinfo .. ' MSGTYPE=' .. message_type
+                -- end
+
+                -- if rtp_ssrc:uint() == 1024 or rtp_ssrc:uint() == 1026 then -- SSRC = control
+                    if message_type == 2 then
+                        local channelResponse = xCloudChannelControl(data_payload()):openChannel(datapacket_tree, hf)
+                        padketinfo = packetinfo .. ' [CONTROL] ' .. channelResponse
+                    end
+                -- end
+
+            else 
+                -- no data packet
+                packetinfo = packetinfo .. ' [NO-DATA]'
+            end
+        end
+        
+        
+
+
+
+
 
             if rtp_ssrc:uint() == 0 then
                 -- Core
-                -- local channel = xCloudCoreChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
+                -- local channel = xCloudCoreChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
                 -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1024 then
                 -- Control
-                local channel = xCloudControlChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudControlChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1025 then
                 -- Qos
-                local channel = xCloudQosChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudQosChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1026 then
                 -- Video
-                local channel = xCloudVideoChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudVideoChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1027 then
                 -- Audio
-                local channel = xCloudAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1028 then
                 -- Messaging
-                local channel = xCloudMessagingChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudMessagingChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1029 then
                 -- ChatAudio
-                local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudChatAudioChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1030 then
                 -- Input
-                local channel = xCloudInputChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudInputChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
 
             elseif rtp_ssrc:uint() == 1031 then
                 -- InputFeedback
-                local channel = xCloudInputFeedbackChannel(decr_tvb():range(headers.offset):tvb()):decode(decrypted_tree, hf)
-                packetinfo = packetinfo .. ' ' .. channel.string
+                local channel = xCloudInputFeedbackChannel(decr_tvb():range(headers.offset):tvb()):decode(data_tree, hf)
+                -- packetinfo = packetinfo .. ' ' .. channel.string
                 
             else
 
@@ -450,7 +547,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
                 -- if headers.command == 2 then
                 --     -- Process open channel
-                --     local channel_tree = decrypted_tree:add("OpenChannel", decr_tvb())
+                --     local channel_tree = data_tree:add("OpenChannel", decr_tvb())
                 --     local openchannel = xCloudChannel(decr_tvb():range(headers.offset):tvb()):openChannel(channel_tree, hf)
                 --     packetinfo = packetinfo .. ' ' .. openchannel.string
                 -- end

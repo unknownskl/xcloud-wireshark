@@ -255,10 +255,6 @@ function xCloudVideoChannel:config(tree, fields)
             offset = offset + 4
         end
 
-        -- unknown
-        tree:add_le(fields.unconnected_unk_16, xCloudVideoChannel._buffer(offset, 2))
-        offset = offset + 2
-
     elseif packet_type == 2 then
         -- Type is response
         retstring = retstring .. ' Response'
@@ -378,10 +374,6 @@ function xCloudVideoChannel:frameData(tree, fields)
             tree:add_le(fields.connected_video_frame_metadata, xCloudVideoChannel._buffer(offset, metadata_size))
             offset = offset + metadata_size
         end
-
-        -- unknown
-        tree:add_le(fields.unconnected_unk_16, xCloudVideoChannel._buffer(offset, 2))
-        offset = offset + 2
 
 
         retstring = retstring .. ' ' .. frame_flags .. ' #' .. frame_id .. ' ' .. (data_offset + data_size) .. '/' .. total_size
