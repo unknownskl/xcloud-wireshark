@@ -5,7 +5,7 @@
 -- ################################################
 
 -- declare protocol
-xcloud_proto = Proto("xCloud-RTP", "xCloud-Gamestreaming")
+xcloud_proto = Proto("xCloud_RTP", "xCloud-Gamestreaming")
 
 -- declare options
 xcloud_proto.prefs["crypt_key"] =
@@ -127,6 +127,23 @@ add_field(ProtoField.bytes, "gs_header_bytes", "Header bytes")
 add_field(ProtoField.uint16, "gs_header_size", "Header Size")
 add_field(ProtoField.uint16, "gs_header_flags", "header flags", base.DEC, {}, 0xffff)
 
+-- header flags Fields
+add_field(ProtoField.uint16, "gs_header_flag_unknown1", "Unknown flag 1", base.DEC, {}, 0x8000)
+add_field(ProtoField.uint16, "gs_header_flag_unknown2", "Unknown flag 2", base.DEC, {}, 0x4000)
+add_field(ProtoField.uint16, "gs_header_flag_unknown3", "Unknown flag 3", base.DEC, {}, 0x2000)
+add_field(ProtoField.uint16, "gs_header_flag_unknown4", "Unknown flag 4", base.DEC, {}, 0x1000)
+add_field(ProtoField.uint16, "gs_header_flag_unknown5", "Unknown flag 5", base.DEC, {}, 0x0800)
+add_field(ProtoField.uint16, "gs_header_flag_hassequence", "Has sequence", base.DEC, {}, 0x0400)
+add_field(ProtoField.uint16, "gs_header_flag_unknown6", "Unknown flag 6", base.DEC, {}, 0x0200)
+add_field(ProtoField.uint16, "gs_header_flag_hasflags", "Has header flags", base.DEC, {}, 0x0100)
+add_field(ProtoField.uint16, "gs_header_flag_isconnected", "Is connected", base.DEC, {}, 0x00c0)
+add_field(ProtoField.uint16, "gs_header_flag_unknown7", "Unknown flag 7", base.DEC, {}, 0x0020)
+add_field(ProtoField.uint16, "gs_header_flag_unknown8", "sequence, ms and flags?", base.DEC, {}, 0x0010)
+add_field(ProtoField.uint16, "gs_header_flag_unknown9", "Unknown flag 9", base.DEC, {}, 0x0008)
+add_field(ProtoField.uint16, "gs_header_flag_unknown10", "Unknown flag 10", base.DEC, {}, 0x0004)
+add_field(ProtoField.uint16, "gs_header_flag_unknown11", "Unknown flag 11", base.DEC, {}, 0x0002)
+add_field(ProtoField.uint16, "gs_header_flag_haspadding", "Has 2 padding bytes", base.DEC, {}, 0x0001)
+
 -- Unconnected Fields
 add_field(ProtoField.uint32, "unconnected_ack_length", "Ack length")
 add_field(ProtoField.uint16, "unconnected_command", "Command")
@@ -152,11 +169,22 @@ frame_types = {
     -- [1] = "?QOS?",
     [2] = "KeyValue",
     [3] = "Confirm",
-    [4] = "VideoFrame",
+    [4] = "DataFrame",
     [5] = "Config?",
     [7] = "InputFrame",
     -- [16] = "Audio?",
 }
+
+control_types = {
+    [1] = "OpenChannel",
+    [2] = "OpenChannel",
+    [3] = "Control",
+    [4] = "Data",
+    [5] = "Sequence",
+    [7] = "Input",
+    -- [16] = "Audio?",
+}
+
 add_field(ProtoField.uint16, "connected_last_received", "Last received Sequence")
 add_field(ProtoField.uint16, "connected_time_ms", "Timestamp since connected")
 add_field(ProtoField.uint16, "connected_next_sequence", "Next Sequence")
@@ -165,6 +193,7 @@ add_field(ProtoField.uint32, "connected_frame_index", "Frame Index")
 add_field(ProtoField.uint32, "connected_frame_version", "Frame Version")
 add_field(ProtoField.bytes, "connected_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_frame_type", "Frame Type", base.DEC, frame_types)
+add_field(ProtoField.uint32, "connected_frame_control", "Control Type", base.DEC, control_types)
 add_field(ProtoField.uint32, "connected_frame_subtype", "Frame SubType")
 add_field(ProtoField.uint64, "connected_frame_yaml_size", "Frame Yaml Size")
 add_field(ProtoField.string, "connected_frame_yaml_data", "Frame Yaml Data")
@@ -429,11 +458,6 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- Create data view
         -- local video_tree = tree:add(fields.connected_video_data, xCloudVideoChannel._buffer(offset, data_size))
 
-        data_payload = ByteArray.new(decr_tvb(headers.offset, headers.data_size):raw(), true):tvb("Data Payload")
-        -- video_tree:add(fields.connected_video_data, data_payload())
-        -- offset = offset + data_size
-        -- End create data view
-
         if rtp_ssrc:uint() == 0 then
             -- Process core data?
             if headers.data_size > 0 then
@@ -444,14 +468,25 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         else
             if headers.data_size > 0 then
+                -- we have data
+                data_payload = ByteArray.new(decr_tvb(headers.offset, headers.data_size):raw(), true):tvb("Data Payload")
+                data_tree:add_le(hf.payload_decrypted, decr_tvb(headers.offset, headers.data_size))
+                decrypted_tree:add_le("Data length:", data_payload():len())
+
                 -- We have data and we are not on the core channel
                 local message_type = decr_tvb(headers.offset, 1):le_uint()
                 local datapacket_tree = decrypted_tree:add("Datapacket", data_payload())
                 -- packetinfo = packetinfo .. ' TYPE=' .. message_type .. '[' .. (message_types[message_type] or 'Unknown') .. ']'
                 -- packetinfo = packetinfo .. ' [DATA='.. headers.data_size ..']'
 
-                datapacket_tree:add_le(hf.connected_frame_type, data_payload(0, 2))
-                datapacket_tree:add_le(hf.connected_frame_subtype, data_payload(2, 2))
+                datapacket_tree:add_le(hf.connected_frame_control, data_payload(0, 2)) -- Header length / type -- probably type.
+                datapacket_tree:add_le(hf.connected_frame_subtype, data_payload(2, 2)) -- sequence
+                datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(4, 2)) -- size?
+                datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(6, 2)) -- ??
+
+                if headers.data_size > 8 then
+                    datapacket_tree:add_le(hf.connected_frame_type, data_payload(8, 2))
+                end
                 
                 -- if message_type == 0 then
                 --     -- We got frame data
@@ -558,7 +593,8 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- end
 
         -- packetinfo = "<RTPSequence=" .. tvbuf(2, 2):uint() .. " SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] Flags=" .. string.tohex(decr_tvb(0, 2):raw()) .. "> " .. packetinfo
-        pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
+        -- pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
+        pinfo.cols.info = "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
     else
         local subtree = tree:add("non xCloud Gamestreaming packet: " .. string.tohex(is_rtp:raw()), tvbuf(12):tvb())
 

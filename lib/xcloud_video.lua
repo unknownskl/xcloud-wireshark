@@ -344,7 +344,7 @@ function xCloudVideoChannel:frameData(tree, fields)
         local total_size = xCloudVideoChannel._buffer(offset, 4):le_uint()
         offset = offset + 4
 
-        -- metadata_size
+        -- unk
         tree:add_le(fields.unconnected_unk_32, xCloudVideoChannel._buffer(offset, 4))
         offset = offset + 4
         

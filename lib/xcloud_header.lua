@@ -17,178 +17,137 @@ function xCloudHeader:decode(tree, fields)
     data.offset = 0
     data.command = -1
 
-    tree:add(fields.gs_header_flags, xCloudHeader._buffer(0, 2))
+    local flags_tree = tree:add(fields.gs_header_flags, xCloudHeader._buffer(0, 2))
     data.string = data.string .. 'flags=' .. tostring(xCloudHeader._buffer(0, 2):bytes())
+
+    -- Read flags: byte 1
+    flags_tree:add(fields.gs_header_flag_unknown1, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown2, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown3, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown4, xCloudHeader._buffer(0, 2))
+
+    -- Read flags: byte 2
+    flags_tree:add(fields.gs_header_flag_unknown5, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_hassequence, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown6, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_hasflags, xCloudHeader._buffer(0, 2))
+
+    -- Read flags: byte 3
+    flags_tree:add(fields.gs_header_flag_isconnected, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown7, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown8, xCloudHeader._buffer(0, 2))
+
+    -- Read flags: byte 4
+    flags_tree:add(fields.gs_header_flag_unknown9, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown10, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_unknown11, xCloudHeader._buffer(0, 2))
+    flags_tree:add(fields.gs_header_flag_haspadding, xCloudHeader._buffer(0, 2))
 
     -- print('flags' .. tostring(xCloudHeader._buffer(0, 2):bytes()))
     -- print('bit' .. xCloudHeader._buffer(1, 1):bitfield(7, 1))
 
     local offset = 2
 
-    -- if bit is xxxx 11xx
-    -- if xCloudHeader._buffer(1, 1):bitfield(0, 2) == 3 then
+    -- hasHeaders bitflag is set. Read confirmation packet, ms and additional headers.
+    -- bitflags: 0000 000x xx00 0000
+    if (xCloudHeader._buffer(0, 1):bitfield(7, 1) > 0) and (xCloudHeader._buffer(1, 1):bitfield(0, 2) == 3) then
+        -- read confirm LE unit32()
+        tree:add_le(fields.gs_header_confirm, xCloudHeader._buffer(offset, 2))
+        -- data.string = data.string .. ' confirm=' .. xCloudHeader._buffer(offset, 2):le_uint()
+        offset = offset + 2
 
-        -- hasHeaders bitflag is set. Read confirmation packet, ms and additional headers.
-        if (xCloudHeader._buffer(0, 1):bitfield(7, 1) > 0) and (xCloudHeader._buffer(1, 1):bitfield(0, 2) == 3) then
-            -- read confirm LE unit32()
-            tree:add_le(fields.gs_header_confirm, xCloudHeader._buffer(offset, 2))
-            -- data.string = data.string .. ' confirm=' .. xCloudHeader._buffer(offset, 2):le_uint()
-            offset = offset + 2
+        -- read timestamp LE unit32()
+        tree:add_le(fields.gs_header_ms, xCloudHeader._buffer(offset, 3))
+        -- data.string = data.string .. ' ms=' .. xCloudHeader._buffer(offset, 3):le_uint()
+        offset = offset + 3
 
-            -- read timestamp LE unit32()
-            tree:add_le(fields.gs_header_ms, xCloudHeader._buffer(offset, 3))
-            -- data.string = data.string .. ' ms=' .. xCloudHeader._buffer(offset, 3):le_uint()
-            offset = offset + 3
+        -- -- read header length
+        local header_size = xCloudHeader._buffer(offset, 2):bitfield(12, 4)
+        -- data.string = data.string .. ' header=' .. header_size
+        offset = offset + 2
 
-            -- -- read header length
-            local header_size = xCloudHeader._buffer(offset, 2):bitfield(12, 4)
-            -- data.string = data.string .. ' header=' .. header_size
-            offset = offset + 2
+        -- -- read header length
+        -- tree:add_le(fields.unconnected_unk_bytes, xCloudHeader._buffer(offset, header_size))
+        offset = offset + header_size
 
-            -- -- read header length
-            -- tree:add_le(fields.unconnected_unk_bytes, xCloudHeader._buffer(offset, header_size))
-            offset = offset + header_size
+        local header_total_size = 2 + header_size
+        local header_tree = tree:add("Header bytes", xCloudHeader._buffer(offset-header_total_size, header_total_size))
+        header_tree:add_le(fields.gs_header_size, xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4))
+        header_tree:add_le(fields.gs_header_flags, xCloudHeader._buffer(offset-header_total_size, 2))
 
-            local header_total_size = 2 + header_size
-            local header_tree = tree:add("Header bytes", xCloudHeader._buffer(offset-header_total_size, header_total_size))
-            header_tree:add_le(fields.gs_header_size, xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4))
-            header_tree:add_le(fields.gs_header_flags, xCloudHeader._buffer(offset-header_total_size, 2))
 
-            if xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4) > 0 then
-                header_tree:add_le(fields.gs_header_bytes, xCloudHeader._buffer(offset-header_total_size+2, header_total_size-2))
-            end
+        if xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4) > 0 then
+            header_tree:add_le(fields.gs_header_bytes, xCloudHeader._buffer(offset-header_total_size+2, header_total_size-2))
         end
+    end
 
-            -- Still need to figure the part below out.. Maybe FEC?
-            -- if 05c1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '05C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+    -- C1 set, read padding..
+    -- bitflag 0000 0000 0000 000x
+    if xCloudHeader._buffer(1, 1):bitfield(6, 2) ~= 0 then
+        -- Read unknown padding?
+        tree:add_le(fields.unconnected_unk_24, xCloudHeader._buffer(offset, 3))
+        local padding = xCloudHeader._buffer(offset, 3):le_uint()
+        -- data.string = data.string .. ' padding=' .. padding
+        offset = offset + 3
+    end
 
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '55C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+    -- unknown pad
+    -- bitflag 0x00 0000 0000 0000
+    if xCloudHeader._buffer(0, 1):bitfield(1, 1) > 0 then
+        -- Read unknown padding?
+        tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
+        -- data.string = data.string .. ' confirm2=' .. xCloudHeader._buffer(offset, 2):le_uint()
+        offset = offset + 1
+    end
 
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '7D00') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 1
-            end
+    -- unknown confirm only?
+    -- bitflag 000x 0000 0000 0000
+    if xCloudHeader._buffer(0, 1):bitfield(3, 1) > 0 then
+        -- Read unknown padding?
+        tree:add_le(fields.gs_header_confirm, xCloudHeader._buffer(offset, 2))
+        -- data.string = data.string .. ' confirm2=' .. xCloudHeader._buffer(offset, 2):le_uint()
+        offset = offset + 2
+    end
 
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '4905') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_32, xCloudHeader._buffer(offset, 4))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 4
-            end
+    -- hasSequence bitflag set
+    -- bitflag 0000 0x00 0000 0000
+    if xCloudHeader._buffer(0, 1):bitfield(5, 1) > 0 then
+        -- read confirm LE unit32()
+        tree:add_le(fields.gs_header_sequence, xCloudHeader._buffer(offset, 2))
+        -- data.string = data.string .. ' sequence=' .. xCloudHeader._buffer(offset, 2):le_uint()
+        offset = offset + 2
+    end
 
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '6605') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_32, xCloudHeader._buffer(offset, 2))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+    -- Read offset = 14
 
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '6A05') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_32, xCloudHeader._buffer(offset, 4))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 4
-            end
+    -- Has flags
+    -- bitflag 0000 x000 0000 0000
+    if (xCloudHeader._buffer(0, 1):bitfield(4, 1) > 0) then
+        -- Read unknown padding?
+        tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
+        offset = offset + 1
+        
 
-            -- if 41c1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '41C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+        -- -- read header length
+        local header_size = xCloudHeader._buffer(offset, 2):bitfield(12, 4)
+        offset = offset + 2
 
-            -- if 01c1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '01C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 05C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+        offset = offset + header_size
 
-            -- if 45C1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '45C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 45C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
+        local header_total_size = 2 + header_size
+        local header_tree = tree:add("Header bytes", xCloudHeader._buffer(offset-header_total_size, header_total_size))
+        header_tree:add_le(fields.gs_header_size, xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4))
+        header_tree:add_le(fields.gs_header_flags, xCloudHeader._buffer(offset-header_total_size, 2))
 
-            -- if 14C1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '14C1') then
-                -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 14C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
 
-            -- if 04c1
-            if (string.tohex(xCloudHeader._buffer(0, 2):raw()) == '04C1') then
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset+1, 1))
-                -- data.string = data.string .. ' 04C1=' .. xCloudHeader._buffer(offset, 1):le_uint() .. ' ' .. xCloudHeader._buffer(offset+1, 1):le_uint()
-                offset = offset + 2
-            end
-
-            -- 4xxx has an extra byte
-            if xCloudHeader._buffer(0, 1):bitfield(1, 1) ~= 0 then
-                tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-                -- data.string = data.string .. ' 4xxx=' .. xCloudHeader._buffer(offset, 1):le_uint()
-                offset = offset + 1
-            end
-
-        -- C1 set, read padding..
-        if xCloudHeader._buffer(1, 1):bitfield(6, 2) ~= 0 then
-            -- Read unknown padding?
-            tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-            local padding = xCloudHeader._buffer(offset, 1):le_uint()
-            -- data.string = data.string .. ' padding=' .. padding
-            offset = offset + 1
+        if xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4) > 0 then
+            header_tree:add_le(fields.gs_header_bytes, xCloudHeader._buffer(offset-header_total_size+2, header_total_size-2))
         end
+            
+    end
 
-        -- unknown confirm only?
-        if xCloudHeader._buffer(0, 1):bitfield(3, 1) > 0 then
-            -- Read unknown padding?
-            tree:add_le(fields.gs_header_confirm, xCloudHeader._buffer(offset, 2))
-            -- data.string = data.string .. ' confirm2=' .. xCloudHeader._buffer(offset, 2):le_uint()
-            offset = offset + 2
-        end
-
-        -- hasSequence bitflag set
-        if xCloudHeader._buffer(0, 1):bitfield(5, 1) > 0 then
-            -- read confirm LE unit32()
-            tree:add_le(fields.gs_header_sequence, xCloudHeader._buffer(offset, 2))
-            -- data.string = data.string .. ' sequence=' .. xCloudHeader._buffer(offset, 2):le_uint()
-            offset = offset + 2
-        end
-
-        -- read opcode LE uint16()
-        -- tree:add_le(fields.gs_channel, xCloudHeader._buffer(offset, 1))
-        -- data.string = data.string .. ' channel=' .. xCloudHeader._buffer(offset, 1):le_uint()
-        -- data.command = xCloudHeader._buffer(offset, 1):le_uint()
-
-    if xCloudHeader._buffer(1, 1):bitfield(0, 2) == 3 then
-
-    else 
+    if xCloudHeader._buffer(1, 1):bitfield(0, 2) ~= 3 then
+        
         data.string = data.string .. '[Unconnected]'
 
         if string.tohex(xCloudHeader._buffer(0, 2):string()) == "0100" then
