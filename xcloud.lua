@@ -414,17 +414,29 @@ end
 function xcloud_proto.dissector(tvbuf, pinfo, tree)
     pinfo.cols.protocol = "xCloud-Gamestreaming" --xcloud_proto.name
     is_rtp=tvbuf(0, 1)
+    is_xcloud_rtp=tvbuf(2, 1)
 
-    if string.tohex(is_rtp:raw()) == "80" then
+    -- if string.tohex(is_rtp:raw()) == "80" or string.tohex(is_xcloud_rtp:raw()) == "80" then
+    if true then
         local decryption_key = string.fromhex(xcloud_proto.prefs.crypt_key)
-        local subtree = tree:add("xCloud Gamestreaming", tvbuf(12):tvb())
+        local subtree
+        local is_xcloud = false
+        local offset = 0
+
+        if string.tohex(is_xcloud_rtp:raw()) == "80" then
+            subtree = tree:add("xCloud Gamestreaming (Not Supported)", tvbuf(12):tvb())
+            is_xcloud = true
+            offset = 2
+        else
+            subtree = tree:add("xHome Gamestreaming", tvbuf(offset+12):tvb())
+        end
 
         -- Read RTP
         local rtp_tree = subtree:add("RTP Header", tvbuf())
-        local rtp_sequence = tvbuf(2, 2):uint()
-        rtp_tree:add(hf.rtp_sequence, tvbuf(2, 2))
-        local rtp_ssrc = tvbuf(8, 4)
-        rtp_tree:add(hf.rtp_ssrc, tvbuf(8, 4))
+        local rtp_sequence = tvbuf(offset+2, 2):uint()
+        rtp_tree:add(hf.rtp_sequence, tvbuf(offset+2, 2))
+        local rtp_ssrc = tvbuf(offset+8, 4)
+        rtp_tree:add(hf.rtp_ssrc, tvbuf(offset+8, 4))
 
         -- New Read RTP
         -- rtp_table = Dissector.get ("rtp")
@@ -432,13 +444,18 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- rtp_table:call(tvbuf(0):tvb(), pinfo, rtp_tree)
         
         -- Process encrypted tree
-        local payload = tvbuf(12)
+        local payload = tvbuf(offset+12)
         local payload_tree = subtree:add(hf.payload_encrypted, payload)
-        payload_tree:add(hf.payload_rtp_aad, tvbuf(0, 12))
+        payload_tree:add(hf.payload_rtp_aad, tvbuf(offset+0, 12))
         payload_tree:add(hf.payload_rtp_tag, payload(payload:len()-16))
         payload_tree:add(hf.payload_rtp_payload, payload(0, payload:len()-16))
 
-        local decrypted = decrypt(payload, decryption_key, tvbuf(0, 12), rtp_sequence, rtp_ssrc)
+        local decrypted
+        if is_xcloud == false then
+            decrypted = decrypt(payload, decryption_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
+        else
+            decrypted = payload:raw()
+        end
         decr_tvb = ByteArray.new(decrypted, true):tvb("Decrypted payload")
 
         -- Process decrypted tree
@@ -594,9 +611,9 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         -- packetinfo = "<RTPSequence=" .. tvbuf(2, 2):uint() .. " SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] Flags=" .. string.tohex(decr_tvb(0, 2):raw()) .. "> " .. packetinfo
         -- pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
-        pinfo.cols.info = "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
+        pinfo.cols.info = "[" .. ssrc_types[tvbuf(offset+8, 4):uint()] .. "] " .. packetinfo
     else
-        local subtree = tree:add("non xCloud Gamestreaming packet: " .. string.tohex(is_rtp:raw()), tvbuf(12):tvb())
+        local subtree = tree:add("non xCloud Gamestreaming packet: " .. string.tohex(is_rtp:raw()), tvbuf(offset+12):tvb())
 
         if string.tohex(is_rtp:raw()) == "01" or string.tohex(is_rtp:raw()) == "00" then
             local stun_dissector = Dissector.get("stun-udp")
