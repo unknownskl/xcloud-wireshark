@@ -19,3 +19,7 @@ This repo contains a wireshark dissector to view xCloud RTP traffic.
 1. Make sure you have NodeJS installed for this step.
 2. Open extract_keys.js and replace the SRTP Key on line 103
 3. Run the script via `node extract_keys.js`
+
+## How do i obtain the SRTP key?
+
+The SRTP key is exhanged on the start of the session. You can obtain this using mitm software like Fiddler.
