@@ -103,7 +103,7 @@ end
 function xcloud_crypto.decrypt(encrypted, key, iv_salt, aad, sequence, ssrc)
     local cipher = gcrypt.Cipher(gcrypt.CIPHER_AES128, gcrypt.CIPHER_MODE_GCM)
 
-    local tag = encrypted(encrypted:len()-16)
+    local tag = encrypted(encrypted:len()-16):raw()
     local data = encrypted(0, encrypted:len()-16)
 
     local iv = xcloud_crypto.calc_iv(iv_salt, ssrc, sequence)
@@ -113,6 +113,12 @@ function xcloud_crypto.decrypt(encrypted, key, iv_salt, aad, sequence, ssrc)
     cipher:authenticate(aad:raw())
 
     local decrypted = cipher:decrypt(data:raw())
+
+    if cipher:gettag() ~= tag
+    then
+         -- Decryption failed
+         return nil
+    end
     
     return decrypted
 end
