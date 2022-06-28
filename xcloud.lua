@@ -8,16 +8,14 @@
 xcloud_proto = Proto("xCloud_RTP", "xCloud-Gamestreaming")
 
 -- declare options
-xcloud_proto.prefs["crypt_key"] =
-    Pref.string("AES Key", "81966e259110b8a6aa786b19880560b5", "Crypt key from crypto context")
-
-xcloud_proto.prefs["iv_salt"] =
-    Pref.string("IV Salt", "f08ee743fe80f561bd57995c", "IV Salt from crypto context")
+xcloud_proto.prefs["srtp_key"] =
+    Pref.string("SRTP Key", "kzdAUmPGFXTRYvXmDxdof30injNmjpaJFltuQuP8", "SRTP key from crypto context")
 
 -- Load helper classes
 local xCloudHeader = require 'lib/xcloud_header'
 -- local xCloudChannel = require 'lib/xcloud_channel'
 local xCloudFrame = require 'lib/xcloud_frame'
+local xCloudCrypto = require 'lib/xcloud_crypto'
 
 -- Refactored classes
 local xCloudChannelControl = require 'lib/channels/control'
@@ -32,21 +30,6 @@ local xCloudInputFeedbackChannel = require 'lib/xcloud_inputfeedback'
 local xCloudQosChannel = require 'lib/xcloud_qos'
 local xCloudControlChannel = require 'lib/xcloud_control'
 local xCloudCoreChannel = require 'lib/xcloud_core'
-    
--- helper functions
-local gcrypt
-do
-    local ok, res = pcall(require, "luagcrypt")
-    if ok then
-        if res.CIPHER_MODE_POLY1305 then
-            gcrypt = res
-        else
-            report_failure("wg.lua: Libgcrypt 1.7 or newer is required for decryption")
-        end
-    else
-        report_failure("wg.lua: cannot load Luagcrypt, decryption is unavailable.\n" .. res)
-end
-end
 
 -- Convenience field adding code from: https://github.com/Lekensteyn/kdnet/blob/master/kdnet.lua
 -- Thx Mr. Peter Wu (Lekensteyn)
@@ -358,38 +341,6 @@ add_field(ProtoField.bytes, "check_length_error", "SIZE LENGTH ERROR")
 
 xcloud_proto.fields = hf
 
-function decrypt(encrypted, key, aad, sequence, ssrc)
-    local cipher = gcrypt.Cipher(gcrypt.CIPHER_AES128, gcrypt.CIPHER_MODE_GCM)
-
-    local tag = encrypted(encrypted:len()-16)
-    local data = encrypted(0, encrypted:len()-16)
-
-    local iv_salt = string.fromhex(xcloud_proto.prefs.iv_salt)
-    local iv = calc_iv(iv_salt, ssrc, sequence)
-
-    cipher:setkey(key)
-    cipher:setiv(iv)
-    cipher:authenticate(aad:raw())
-
-    local decrypted = cipher:decrypt(data:raw())
-    
-    return decrypted
-end
-
-function calc_iv(salt, ssrc, pkti)
-    local pre = string.sub(salt, 0, 4)
-    local tail = string.sub(salt, 5)
-
-    local saltint = Struct.unpack('>e', tail)
-    local ssrc_p = UInt64(ssrc:uint())
-
-    local xor = saltint:bxor(pkti)
-    local xor = xor:bxor(ssrc_p:lshift(48))
-    local new_iv = pre .. string.fromhex(xor:tohex())
-
-    return new_iv
-end 
-
 function stringtonumber(str)
     local function _b2n(exp, num, digit, ...)
         if not digit then return num end
@@ -418,7 +369,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
     -- if string.tohex(is_rtp:raw()) == "80" or string.tohex(is_xcloud_rtp:raw()) == "80" then
     if true then
-        local decryption_key = string.fromhex(xcloud_proto.prefs.crypt_key)
+        local srtp_key = xcloud_proto.prefs.srtp_key
         local subtree
         local is_xcloud = false
         local offset = 0
@@ -430,6 +381,13 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         else
             subtree = tree:add("xHome Gamestreaming", tvbuf(offset+12):tvb())
         end
+
+        local crypt_key, auth_key, salt_key = xCloudCrypto.derive_keys(srtp_key)
+
+        -- Debug key derivation
+        -- subtree:add("Crypt key", ByteArray.new(crypt_key, true):tvb("Crypt key"))
+        -- subtree:add("Auth key", ByteArray.new(auth_key, true):tvb("Auth key"))
+        -- subtree:add("Salt key", ByteArray.new(salt_key, true):tvb("Salt key"))
 
         -- Read RTP
         local rtp_tree = subtree:add("RTP Header", tvbuf())
@@ -452,7 +410,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         local decrypted
         if is_xcloud == false then
-            decrypted = decrypt(payload, decryption_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
+            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
         else
             decrypted = payload:raw()
         end
