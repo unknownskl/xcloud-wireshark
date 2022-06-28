@@ -499,7 +499,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 -- if rtp_ssrc:uint() == 1024 or rtp_ssrc:uint() == 1026 then -- SSRC = control
                     if message_type == 2 then
                         local channelResponse = xCloudChannelControl(data_payload()):openChannel(datapacket_tree, hf)
-                        padketinfo = packetinfo .. ' [CONTROL] ' .. channelResponse
+                        packetinfo = packetinfo .. ' [CONTROL] ' .. channelResponse
                     end
                 -- end
 
