@@ -86,6 +86,37 @@ function xcloud_crypto.derive_keys(keyB64)
     return _cryptKey, _authKey, _saltKey
 end
 
+function xcloud_crypto.calc_iv(salt, ssrc, pkti)
+    local pre = string.sub(salt, 0, 4)
+    local tail = string.sub(salt, 5)
+
+    local saltint = Struct.unpack('>e', tail)
+    local ssrc_p = UInt64(ssrc:uint())
+
+    local xor = saltint:bxor(pkti)
+    local xor = xor:bxor(ssrc_p:lshift(48))
+    local new_iv = pre .. string.fromhex(xor:tohex())
+
+    return new_iv
+end
+
+function xcloud_crypto.decrypt(encrypted, key, iv_salt, aad, sequence, ssrc)
+    local cipher = gcrypt.Cipher(gcrypt.CIPHER_AES128, gcrypt.CIPHER_MODE_GCM)
+
+    local tag = encrypted(encrypted:len()-16)
+    local data = encrypted(0, encrypted:len()-16)
+
+    local iv = xcloud_crypto.calc_iv(iv_salt, ssrc, sequence)
+
+    cipher:setkey(key)
+    cipher:setiv(iv)
+    cipher:authenticate(aad:raw())
+
+    local decrypted = cipher:decrypt(data:raw())
+    
+    return decrypted
+end
+
 function test_crypto()
     -- Initialize the gcrypt library (required for standalone applications that
     -- do not use Libgcrypt themselves).

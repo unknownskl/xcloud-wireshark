@@ -30,21 +30,6 @@ local xCloudInputFeedbackChannel = require 'lib/xcloud_inputfeedback'
 local xCloudQosChannel = require 'lib/xcloud_qos'
 local xCloudControlChannel = require 'lib/xcloud_control'
 local xCloudCoreChannel = require 'lib/xcloud_core'
-    
--- helper functions
-local gcrypt
-do
-    local ok, res = pcall(require, "luagcrypt")
-    if ok then
-        if res.CIPHER_MODE_POLY1305 then
-            gcrypt = res
-        else
-            report_failure("xcloud.lua: Libgcrypt 1.7 or newer is required for decryption")
-        end
-    else
-        report_failure("xcloud.lua: cannot load Luagcrypt, decryption is unavailable.\n" .. res)
-    end
-end
 
 -- Convenience field adding code from: https://github.com/Lekensteyn/kdnet/blob/master/kdnet.lua
 -- Thx Mr. Peter Wu (Lekensteyn)
@@ -356,37 +341,6 @@ add_field(ProtoField.bytes, "check_length_error", "SIZE LENGTH ERROR")
 
 xcloud_proto.fields = hf
 
-function decrypt(encrypted, key, iv_salt, aad, sequence, ssrc)
-    local cipher = gcrypt.Cipher(gcrypt.CIPHER_AES128, gcrypt.CIPHER_MODE_GCM)
-
-    local tag = encrypted(encrypted:len()-16)
-    local data = encrypted(0, encrypted:len()-16)
-
-    local iv = calc_iv(iv_salt, ssrc, sequence)
-
-    cipher:setkey(key)
-    cipher:setiv(iv)
-    cipher:authenticate(aad:raw())
-
-    local decrypted = cipher:decrypt(data:raw())
-    
-    return decrypted
-end
-
-function calc_iv(salt, ssrc, pkti)
-    local pre = string.sub(salt, 0, 4)
-    local tail = string.sub(salt, 5)
-
-    local saltint = Struct.unpack('>e', tail)
-    local ssrc_p = UInt64(ssrc:uint())
-
-    local xor = saltint:bxor(pkti)
-    local xor = xor:bxor(ssrc_p:lshift(48))
-    local new_iv = pre .. string.fromhex(xor:tohex())
-
-    return new_iv
-end 
-
 function stringtonumber(str)
     local function _b2n(exp, num, digit, ...)
         if not digit then return num end
@@ -456,7 +410,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         local decrypted
         if is_xcloud == false then
-            decrypted = decrypt(payload, crypt_key, salt_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
+            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
         else
             decrypted = payload:raw()
         end
