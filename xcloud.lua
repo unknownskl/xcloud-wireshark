@@ -373,6 +373,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         local subtree
         local is_xcloud = false
         local offset = 0
+        local packetinfo = ''
 
         if string.tohex(is_xcloud_rtp:raw()) == "80" then
             subtree = tree:add("xCloud Gamestreaming (Not Supported)", tvbuf(12):tvb())
@@ -402,23 +403,31 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- rtp_table:call(tvbuf(0):tvb(), pinfo, rtp_tree)
         
         -- Process encrypted tree
+        local aad = tvbuf(offset+0, 12)
         local payload = tvbuf(offset+12)
         local payload_tree = subtree:add(hf.payload_encrypted, payload)
-        payload_tree:add(hf.payload_rtp_aad, tvbuf(offset+0, 12))
+        payload_tree:add(hf.payload_rtp_aad, aad)
         payload_tree:add(hf.payload_rtp_tag, payload(payload:len()-16))
         payload_tree:add(hf.payload_rtp_payload, payload(0, payload:len()-16))
 
         local decrypted
+        local atag
         if is_xcloud == false then
-            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, tvbuf(offset+0, 12), rtp_sequence, rtp_ssrc)
+            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, aad, rtp_sequence, rtp_ssrc)
         else
             decrypted = payload:raw()
         end
+
+        if decrypted == nil then
+            packetinfo = '[DECRYPTION FAIL]'
+            pinfo.cols.info = packetinfo
+            return
+        end
+
         decr_tvb = ByteArray.new(decrypted, true):tvb("Decrypted payload")
 
         -- Process decrypted tree
         local decrypted_tree = subtree:add(hf.payload_decrypted, decr_tvb())
-        local packetinfo = ''
         
         -- Read packet data
         local headers_tree = decrypted_tree:add("Header", decr_tvb())
