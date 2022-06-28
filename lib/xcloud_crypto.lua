@@ -81,7 +81,7 @@ function xcloud_crypto.derive_keys(keyB64)
 
     local _cryptKey = xcloud_crypto.derive_single_key(_masterKey, _masterSalt, 0)
     local _authKey = xcloud_crypto.derive_single_key(_masterKey, _masterSalt, 1)
-    local _saltKey = xcloud_crypto.derive_single_key(_masterKey, _masterSalt, 2, 14)
+    local _saltKey = string.sub(xcloud_crypto.derive_single_key(_masterKey, _masterSalt, 2, 14), 3, 15)
 
     return _cryptKey, _authKey, _saltKey
 end
