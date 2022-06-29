@@ -97,8 +97,11 @@ add_field(ProtoField.bytes, "payload_rtp_payload", "RTP Payload")
 add_field(ProtoField.bytes, "payload_encrypted", "Encrypted payload")
 add_field(ProtoField.bytes, "payload_decrypted", "Decrypted payload")
 
-add_field(ProtoField.uint16, "rtp_sequence", "Sequence")
-add_field(ProtoField.uint32, "rtp_ssrc", "SSRC", base.DEC, ssrc_types)
+local rtp_f = Field.new("rtp")
+local rtp_p_type_f = Field.new("rtp.p_type")
+local rtp_payload_f = Field.new("rtp.payload")
+local rtp_seq_f = Field.new("rtp.seq")
+local rtp_ssrc_f = Field.new("rtp.ssrc")
 
 -- Header Fiels
 add_field(ProtoField.uint16, "gs_header_flags", "Header flags", base.DEC, {}, 0xffff)
@@ -363,22 +366,33 @@ end
 
 -- create a function to dissect it
 function xcloud_proto.dissector(tvbuf, pinfo, tree)
-    pinfo.cols.protocol = "xCloud-Gamestreaming" --xcloud_proto.name
-    is_rtp=tvbuf(0, 1)
-    is_xcloud_rtp=tvbuf(2, 1)
+    -- Get RTP version in advance to differentiate between RTP and STUN
+    -- RTP - version: 2 (always)
+    -- STUN - version: 0
+    rtp_version = tvbuf(0, 1):bitfield(0, 2)
 
-    -- if string.tohex(is_rtp:raw()) == "80" or string.tohex(is_xcloud_rtp:raw()) == "80" then
-    if true then
+    if rtp_version == 2 then
         local srtp_key = xcloud_proto.prefs.srtp_key
         local subtree
         local is_xcloud = false
         local offset = 0
         local packetinfo = ''
 
-        if string.tohex(is_xcloud_rtp:raw()) == "80" then
+        -- Dissect RTP header first
+        local rtp_dissector = Dissector.get("rtp")
+        rtp_dissector:call(tvbuf, pinfo, tree)
+
+        local rtp_p_type = rtp_p_type_f().range
+        local rtp_seq = rtp_seq_f().range
+        local rtp_ssrc = rtp_ssrc_f().range
+
+        pinfo.cols.protocol = "xCloud-Gamestreaming" --xcloud_proto.name
+
+        if rtp_p_type:uint() == 0x80 then
             subtree = tree:add("xCloud Gamestreaming (Not Supported)", tvbuf(12):tvb())
             is_xcloud = true
             offset = 2
+            return
         else
             subtree = tree:add("xHome Gamestreaming", tvbuf(offset+12):tvb())
         end
@@ -390,18 +404,6 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- subtree:add("Auth key", ByteArray.new(auth_key, true):tvb("Auth key"))
         -- subtree:add("Salt key", ByteArray.new(salt_key, true):tvb("Salt key"))
 
-        -- Read RTP
-        local rtp_tree = subtree:add("RTP Header", tvbuf())
-        local rtp_sequence = tvbuf(offset+2, 2):uint()
-        rtp_tree:add(hf.rtp_sequence, tvbuf(offset+2, 2))
-        local rtp_ssrc = tvbuf(offset+8, 4)
-        rtp_tree:add(hf.rtp_ssrc, tvbuf(offset+8, 4))
-
-        -- New Read RTP
-        -- rtp_table = Dissector.get ("rtp")
-        -- tvb=tvbuf(0)
-        -- rtp_table:call(tvbuf(0):tvb(), pinfo, rtp_tree)
-        
         -- Process encrypted tree
         local aad = tvbuf(offset+0, 12)
         local payload = tvbuf(offset+12)
@@ -411,9 +413,8 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         payload_tree:add(hf.payload_rtp_payload, payload(0, payload:len()-16))
 
         local decrypted
-        local atag
         if is_xcloud == false then
-            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, aad, rtp_sequence, rtp_ssrc)
+            decrypted = xCloudCrypto.decrypt(payload, crypt_key, salt_key, aad, rtp_seq:uint(), rtp_ssrc)
         else
             decrypted = payload:raw()
         end
@@ -580,13 +581,12 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
         -- pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
         pinfo.cols.info = "[" .. ssrc_types[tvbuf(offset+8, 4):uint()] .. "] " .. packetinfo
     else
-        local subtree = tree:add("non xCloud Gamestreaming packet: " .. string.tohex(is_rtp:raw()), tvbuf(offset+12):tvb())
+        local subtree = tree:add("non xCloud Gamestreaming packet", tvbuf)
 
-        if string.tohex(is_rtp:raw()) == "01" or string.tohex(is_rtp:raw()) == "00" then
+        if rtp_version == 0 then
+            -- Likely a STUN packet
             local stun_dissector = Dissector.get("stun-udp")
             stun_dissector:call(tvbuf():tvb(), pinfo, tree)
-
-            pinfo.cols.info = "STUN"
         end
     end
 end
