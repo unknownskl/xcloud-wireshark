@@ -579,7 +579,7 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
 
         -- packetinfo = "<RTPSequence=" .. tvbuf(2, 2):uint() .. " SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] Flags=" .. string.tohex(decr_tvb(0, 2):raw()) .. "> " .. packetinfo
         -- pinfo.cols.info = "xCloud SSRC=" .. tvbuf(8, 4):uint() .. "[" .. ssrc_types[tvbuf(8, 4):uint()] .. "] " .. packetinfo
-        pinfo.cols.info = "[" .. ssrc_types[tvbuf(offset+8, 4):uint()] .. "] " .. packetinfo
+        pinfo.cols.info = "[" .. ssrc_types[rtp_ssrc:uint()] .. "] " .. packetinfo
     else
         local subtree = tree:add("non xCloud Gamestreaming packet", tvbuf)
 
