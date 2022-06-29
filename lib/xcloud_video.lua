@@ -20,7 +20,7 @@ function xCloudVideoChannel:decode(tree, fields)
 
     local offset = 4
 
-    if channel == 1 then
+    if channel == 1 or channel == 5 then
         -- FrameData
         local channel_tree = tree:add("Video FrameData", xCloudVideoChannel._buffer())
         local output = xCloudVideoChannel:frameData(channel_tree, fields)

@@ -129,13 +129,13 @@ function xCloudMessagingChannel:control(tree, fields)
         offset = offset + 4
 
         -- frame_id
-        tree:add_le(fields.connected_messaging_frame_id, xCloudMessagingChannel._buffer(offset, 4))
-        local frame_id = xCloudMessagingChannel._buffer(offset, 4):le_uint()
-        offset = offset + 4
+        tree:add_le(fields.connected_audio_timestamp, xCloudMessagingChannel._buffer(offset, 8))
+        local frame_id = xCloudMessagingChannel._buffer(offset, 8)
+        offset = offset + 8
 
-        -- unknown
-        tree:add_le(fields.unconnected_unk_32, xCloudMessagingChannel._buffer(offset, 4))
-        offset = offset + 4
+        -- -- unknown
+        -- tree:add_le(fields.unconnected_unk_32, xCloudMessagingChannel._buffer(offset, 4))
+        -- offset = offset + 4
 
         -- key_length
         tree:add_le(fields.unconnected_unk_32, xCloudMessagingChannel._buffer(offset, 4))

@@ -123,27 +123,36 @@ function xCloudHeader:decode(tree, fields)
     -- Has flags
     -- bitflag 0000 x000 0000 0000
     if (xCloudHeader._buffer(0, 1):bitfield(4, 1) > 0) then
-        -- Read unknown padding?
-        tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
-        offset = offset + 1
+
+        -- tree:add_le(fields.unconnected_unk_16, xCloudHeader._buffer(offset, 2))
+        -- offset = offset + 2
+
+        -- tree:add_le(fields.unconnected_unk_24, xCloudHeader._buffer(offset, 3))
+        -- offset = offset + 3
+
+        -- tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
+        -- offset = offset + 1
+
+        -- -- Read unknown padding?
+        -- tree:add_le(fields.unconnected_unk_8, xCloudHeader._buffer(offset, 1))
+        -- offset = offset + 1
         
 
-        -- -- read header length
-        local header_size = xCloudHeader._buffer(offset, 2):bitfield(12, 4)
-        offset = offset + 2
+        -- -- -- read header length
+        -- local header_size = xCloudHeader._buffer(offset, 2):bitfield(12, 4)
+        -- offset = offset + 2
 
-        offset = offset + header_size
+        -- offset = offset + header_size
 
-        local header_total_size = 2 + header_size
-        local header_tree = tree:add("Header bytes", xCloudHeader._buffer(offset-header_total_size, header_total_size))
-        header_tree:add_le(fields.gs_header_size, xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4))
-        header_tree:add_le(fields.gs_header_flags, xCloudHeader._buffer(offset-header_total_size, 2))
+        -- local header_total_size = 2 + header_size
+        -- local header_tree = tree:add("Header bytes", xCloudHeader._buffer(offset-header_total_size, header_total_size))
+        -- header_tree:add_le(fields.gs_header_size, xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4))
+        -- header_tree:add_le(fields.gs_header_flags, xCloudHeader._buffer(offset-header_total_size, 2))
 
 
-        if xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4) > 0 then
-            header_tree:add_le(fields.gs_header_bytes, xCloudHeader._buffer(offset-header_total_size+2, header_total_size-2))
-        end
-            
+        -- if xCloudHeader._buffer(offset-header_total_size, 2):bitfield(12, 4) > 0 then
+        --     header_tree:add_le(fields.gs_header_bytes, xCloudHeader._buffer(offset-header_total_size+2, header_total_size-2))
+        -- end 
     end
 
     if xCloudHeader._buffer(1, 1):bitfield(0, 2) ~= 3 then

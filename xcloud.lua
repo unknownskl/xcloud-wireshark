@@ -162,11 +162,12 @@ frame_types = {
 }
 
 control_types = {
-    [1] = "OpenChannel",
+    [0] = "AudioChannel",
+    [1] = "DataChannel",
     [2] = "OpenChannel",
     [3] = "Control",
     [4] = "Data",
-    [5] = "Sequence",
+    [5] = "DataChannel",
     [7] = "Input",
     -- [16] = "Audio?",
 }
@@ -181,6 +182,7 @@ add_field(ProtoField.bytes, "connected_frame_id", "Frame ID")
 add_field(ProtoField.uint32, "connected_frame_type", "Frame Type", base.DEC, frame_types)
 add_field(ProtoField.uint32, "connected_frame_control", "Control Type", base.DEC, control_types)
 add_field(ProtoField.uint32, "connected_frame_subtype", "Frame SubType")
+add_field(ProtoField.uint16, "connected_frame_sequence", "Frame Sequence ID")
 add_field(ProtoField.uint64, "connected_frame_yaml_size", "Frame Yaml Size")
 add_field(ProtoField.string, "connected_frame_yaml_data", "Frame Yaml Data")
 
@@ -450,6 +452,8 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
             else
                 packetinfo = packetinfo .. ' [CORE-NO-DATA]'
             end
+
+            
 
         else
             if headers.data_size > 0 then

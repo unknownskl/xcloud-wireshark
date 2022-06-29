@@ -285,13 +285,13 @@ function xCloudInputChannel:frameData(tree, fields)
         local frame_id = xCloudInputChannel._buffer(offset, 4):le_uint()
         offset = offset + 4
 
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
+        -- absolute timestamp since epoch
+        tree:add_le(fields.unconnected_unk_64, xCloudInputChannel._buffer(offset, 8))
+        offset = offset + 8
 
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
+        -- -- unk
+        -- tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
+        -- offset = offset + 4
 
         -- unk
         tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
@@ -302,32 +302,48 @@ function xCloudInputChannel:frameData(tree, fields)
         offset = offset + 1
 
         -- ms
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
+        tree:add_le(fields.unconnected_unk_64, xCloudInputChannel._buffer(offset,4))
         offset = offset + 4
 
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
-
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
-
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
-
-        -- unk
-        tree:add_le(fields.unconnected_unk_32, xCloudInputChannel._buffer(offset, 4))
-        offset = offset + 4
+         -- gamepad_id
+         tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+         offset = offset + 2
 
         -- unk
         tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
         offset = offset + 2
 
-        -- next_sequence
+        -- unk
         tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
         offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- unk - Buttonmask?
+        tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        offset = offset + 2
+
+        -- -- next_sequence
+        -- tree:add_le(fields.unconnected_unk_16, xCloudInputChannel._buffer(offset, 2))
+        -- offset = offset + 2
         
         retstring = retstring .. ' #' .. frame_id
     else
