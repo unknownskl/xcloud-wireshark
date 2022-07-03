@@ -53,7 +53,7 @@ function xCloudMessagingChannel:openChannel(tree, fields)
     offset = offset + channel_name_length
 
     -- if xCloudMessagingChannel._buffer(offset, 2):le_uint() == 0 then
-        tree:add_le(fields.unconnected_unk_16, xCloudMessagingChannel._buffer(offset, 2))
+        tree:add_le(fields.unconnected_unk_16, xCloudMessagingChannel._buffer(offset, 2)) -- padding
         offset = offset + 2
     -- end
 
@@ -61,13 +61,16 @@ function xCloudMessagingChannel:openChannel(tree, fields)
         -- we got the first request because we have a channel name
 
         -- unknown
-        tree:add_le(fields.unconnected_unk_32, xCloudMessagingChannel._buffer(offset, 4))
-        offset = offset + 4
+        tree:add_le(fields.unconnected_unk_16, xCloudMessagingChannel._buffer(offset, 2))
+        offset = offset + 2
 
         -- unknown
+        tree:add_le(fields.unconnected_unk_16, xCloudMessagingChannel._buffer(offset, 2))
+        offset = offset + 2
 
-        tree:add_le(fields.unconnected_unk_32, xCloudMessagingChannel._buffer(offset, 4))
-        offset = offset + 4
+        -- unknown
+        tree:add_le(fields.unconnected_unk_16, xCloudMessagingChannel._buffer(offset, 2))
+        offset = offset + 2
 
     else
 

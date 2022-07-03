@@ -19,6 +19,7 @@ local xCloudCrypto = require 'lib/xcloud_crypto'
 
 -- Refactored classes
 local xCloudChannelControl = require 'lib/channels/control'
+local xCloudDataRouter = require 'lib/router'
 
 -- Old classes
 local xCloudVideoChannel = require 'lib/xcloud_video'
@@ -58,8 +59,8 @@ hasMs_types = {
 
 packetChannel_types = {
     [1] = "FrameData",
-    [2] = "OpenChannel",
-    [3] = "Control",
+    [2] = "OpenChannelRequest",
+    [3] = "OpenChannelResponse",
     [4] = "Data",
     [5] = "Data"
 }
@@ -307,6 +308,7 @@ add_field(ProtoField.uint16, "gs_flag_unknown4", "hasUnknown4", base.DEC, hasMs_
 add_field(ProtoField.uint16, "gs_flag_unknown5", "hasUnknown5", base.DEC, hasMs_types, 0x800)
 add_field(ProtoField.uint16, "gs_flag_unknown6", "hasUnknown6", base.DEC, hasMs_types, 0x1000)
 
+add_field(ProtoField.uint16, "gs_input_gamepad_frame_count", "Gamepad frames count")
 add_field(ProtoField.uint16, "gs_input_buttons", "Button Bitflags", base.DEC, {}, 0xffff)
 
 add_field(ProtoField.uint16, "gs_sequence", "Sequence")
@@ -343,6 +345,20 @@ add_field(ProtoField.uint16, "gs_openchannel_length", "Channel name length")
 add_field(ProtoField.uint32, "gs_temp_length", "DEBUG")
 add_field(ProtoField.uint32, "gs_temp_data", "DEBUG DATA")
 add_field(ProtoField.bytes, "check_length_error", "SIZE LENGTH ERROR")
+
+-- Datapacket fields
+add_field(ProtoField.uint32, "data_packet_type", "Data Packet Type", base.DEC, {
+    [1] = "FrameData",
+    [2] = "OpenChannelRequest",
+    [3] = "OpenChannelResponse",
+    [4] = "Data",
+    [5] = "Data"
+})
+add_field(ProtoField.uint32, "data_openchannel_status", "Response status", base.DEC, {
+    [1] = "???",
+    [2] = "Success",
+})
+
 
 xcloud_proto.fields = hf
 
@@ -468,14 +484,14 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 -- packetinfo = packetinfo .. ' TYPE=' .. message_type .. '[' .. (message_types[message_type] or 'Unknown') .. ']'
                 -- packetinfo = packetinfo .. ' [DATA='.. headers.data_size ..']'
 
-                datapacket_tree:add_le(hf.connected_frame_control, data_payload(0, 2)) -- Header length / type -- probably type.
-                datapacket_tree:add_le(hf.connected_frame_subtype, data_payload(2, 2)) -- sequence
-                datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(4, 2)) -- size?
-                datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(6, 2)) -- ??
+                -- datapacket_tree:add_le(hf.connected_frame_control, data_payload(0, 2)) -- Header length / type -- probably type.
+                -- datapacket_tree:add_le(hf.connected_frame_subtype, data_payload(2, 2)) -- sequence
+                -- datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(4, 2)) -- size?
+                -- datapacket_tree:add_le(hf.unconnected_unk_16, data_payload(6, 2)) -- ??
 
-                if headers.data_size > 8 then
-                    datapacket_tree:add_le(hf.connected_frame_type, data_payload(8, 2))
-                end
+                -- if headers.data_size > 8 then
+                --     datapacket_tree:add_le(hf.connected_frame_type, data_payload(8, 2))
+                -- end
                 
                 -- if message_type == 0 then
                 --     -- We got frame data
@@ -502,10 +518,14 @@ function xcloud_proto.dissector(tvbuf, pinfo, tree)
                 -- end
 
                 -- if rtp_ssrc:uint() == 1024 or rtp_ssrc:uint() == 1026 then -- SSRC = control
-                    if message_type == 2 then
-                        local channelResponse = xCloudChannelControl(data_payload()):openChannel(datapacket_tree, hf)
-                        packetinfo = packetinfo .. ' [CONTROL] ' .. channelResponse
-                    end
+                    -- if message_type == 2 then
+                    --     local channelResponse = xCloudChannelControl(data_payload()):openChannel(datapacket_tree, hf)
+                    --     packetinfo = packetinfo .. ' [CONTROL] ' .. channelResponse
+                    -- end
+
+                    xCloudDataRouter(hf):read(data_payload(), datapacket_tree)
+
+                    
                 -- end
 
             else 

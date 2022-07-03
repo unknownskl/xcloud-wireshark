@@ -12,7 +12,10 @@ end
 
 function xClouxCloudChannelControl:openChannel(tree, fields)
 
-    local offset = 4
+    local offset = 0
+
+    tree:add_le(fields.unconnected_unk_bytes, xClouxCloudChannelControl._buffer(offset, 4))
+    offset = offset + 4
 
     tree:add_le(fields.connected_openchannel_size, xClouxCloudChannelControl._buffer(offset, 2))
     local channel_name_length = xClouxCloudChannelControl._buffer(offset, 2):le_uint()

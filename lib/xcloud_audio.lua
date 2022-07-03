@@ -67,13 +67,16 @@ function xCloudAudioChannel:openChannel(tree, fields)
         -- we got the first request because we have a channel name
 
         -- unknown
-        tree:add_le(fields.unconnected_unk_32, xCloudAudioChannel._buffer(offset, 4))
-        offset = offset + 4
+        tree:add_le(fields.unconnected_unk_16, xCloudAudioChannel._buffer(offset, 2))
+        offset = offset + 2
 
         -- unknown
+        tree:add_le(fields.unconnected_unk_16, xCloudAudioChannel._buffer(offset, 2))
+        offset = offset + 2
 
-        tree:add_le(fields.unconnected_unk_32, xCloudAudioChannel._buffer(offset, 4))
-        offset = offset + 4
+        -- unknown
+        tree:add_le(fields.unconnected_unk_16, xCloudAudioChannel._buffer(offset, 2))
+        offset = offset + 2
 
     else
         -- relative timmestamp?
